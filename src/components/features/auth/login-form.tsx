@@ -32,6 +32,24 @@ export function LoginForm() {
     },
   });
 
+  /** セッションCookieをセットしてからリダイレクト */
+  async function createSessionAndRedirect(
+    idToken: string,
+    role: string | undefined
+  ) {
+    await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+
+    if (role === 'admin') {
+      router.push('/dashboard');
+    } else {
+      router.push('/report/new');
+    }
+  }
+
   /** メール/パスワードでログイン */
   async function onSubmit(values: LoginFormValues) {
     setIsLoading(true);
@@ -41,12 +59,9 @@ export function LoginForm() {
       const user = await signInWithEmail(values.email, values.password);
       const tokenResult = await user.getIdTokenResult();
       const role = tokenResult.claims['role'] as string | undefined;
+      const idToken = await user.getIdToken();
 
-      if (role === 'admin') {
-        router.push('/dashboard');
-      } else {
-        router.push('/report/new');
-      }
+      await createSessionAndRedirect(idToken, role);
     } catch {
       setError('メールアドレスまたはパスワードが正しくありません');
     } finally {
@@ -63,12 +78,9 @@ export function LoginForm() {
       const user = await signInWithGoogle();
       const tokenResult = await user.getIdTokenResult();
       const role = tokenResult.claims['role'] as string | undefined;
+      const idToken = await user.getIdToken();
 
-      if (role === 'admin') {
-        router.push('/dashboard');
-      } else {
-        router.push('/report/new');
-      }
+      await createSessionAndRedirect(idToken, role);
     } catch {
       setError('Googleログインに失敗しました');
     } finally {
