@@ -13,7 +13,10 @@ export default function HomePage() {
     if (isLoading) return;
 
     if (!uid) {
-      router.replace('/login');
+      // 古いセッションCookieが残っている場合に備えて削除してからリダイレクト
+      void fetch('/api/auth/session', { method: 'DELETE' }).finally(() => {
+        router.replace('/login');
+      });
       return;
     }
 

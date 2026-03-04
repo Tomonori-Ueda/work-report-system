@@ -23,11 +23,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 認証済みでログインページにアクセス → ルートへリダイレクト
-  if (session && pathname === '/login') {
-    const homeUrl = new URL('/', request.url);
-    return NextResponse.redirect(homeUrl);
-  }
+  // ログインページはCookie有無に関わらず常にアクセス可能
+  // （Cookieが古い場合のリダイレクトループを防止）
 
   return NextResponse.next();
 }
