@@ -12,6 +12,7 @@ export function WorkerHeader() {
 
   async function handleLogout() {
     await signOut();
+    await fetch('/api/auth/session', { method: 'DELETE' });
     router.replace('/login');
   }
 
