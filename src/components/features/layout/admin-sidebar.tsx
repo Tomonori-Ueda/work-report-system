@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'ダッシュボード', icon: '📊' },
   { href: '/reports', label: '日報管理', icon: '📋' },
+  { href: '/leaves', label: '休暇管理', icon: '🏖' },
   { href: '/employees', label: '従業員管理', icon: '👥' },
 ] as const;
 
