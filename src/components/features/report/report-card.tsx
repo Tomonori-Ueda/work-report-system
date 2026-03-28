@@ -40,9 +40,27 @@ export function ReportCard({
               {report.userName}
             </p>
           )}
-          <p className="text-sm mt-2 line-clamp-2">
-            {report.workContent}
-          </p>
+          {report.workEntries && report.workEntries.length > 0 ? (
+            <div className="text-sm mt-2 space-y-0.5">
+              {report.workEntries.slice(0, 2).map((entry, i) => (
+                <p key={i} className="line-clamp-1">
+                  <span className="text-muted-foreground font-mono text-xs">
+                    {entry.startTime}〜{entry.endTime}
+                  </span>{' '}
+                  {entry.content}
+                </p>
+              ))}
+              {report.workEntries.length > 2 && (
+                <p className="text-muted-foreground text-xs">
+                  他{report.workEntries.length - 2}件
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm mt-2 line-clamp-2">
+              {report.workContent}
+            </p>
+          )}
         </CardContent>
       </Card>
     </Link>

@@ -1,9 +1,10 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   Form,
   FormControl,
@@ -24,6 +25,9 @@ import {
 } from '@/lib/validations/report';
 import { formatDateToISO } from '@/lib/utils/date';
 
+/** 作業エントリの初期値 */
+const DEFAULT_WORK_ENTRY = { startTime: '', endTime: '', content: '' };
+
 interface ReportFormProps {
   /** 編集時のデフォルト値 */
   defaultValues?: Partial<CreateReportFormValues>;
@@ -42,9 +46,17 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
       reportDate: defaultValues?.reportDate ?? formatDateToISO(new Date()),
       startTime: defaultValues?.startTime ?? '08:00',
       endTime: defaultValues?.endTime ?? '17:00',
-      workContent: defaultValues?.workContent ?? '',
+      workEntries: defaultValues?.workEntries ?? [
+        { startTime: '08:00', endTime: '12:00', content: '' },
+        { startTime: '13:00', endTime: '17:00', content: '' },
+      ],
       notes: defaultValues?.notes ?? '',
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: 'workEntries',
   });
 
   const startTime = form.watch('startTime');
@@ -53,7 +65,6 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
   async function onSubmit(values: CreateReportFormValues) {
     try {
       if (reportId) {
-        // 更新
         const res = await fetch(`/api/reports/${reportId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -106,7 +117,7 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
                 name="startTime"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>開始時刻</FormLabel>
+                    <FormLabel>全体開始時刻</FormLabel>
                     <FormControl>
                       <Input type="time" {...field} />
                     </FormControl>
@@ -119,7 +130,7 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
                 name="endTime"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>終了時刻</FormLabel>
+                    <FormLabel>全体終了時刻</FormLabel>
                     <FormControl>
                       <Input type="time" {...field} />
                     </FormControl>
@@ -131,23 +142,89 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
 
             <WorkHoursDisplay startTime={startTime} endTime={endTime} />
 
-            <FormField
-              control={form.control}
-              name="workContent"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>作業内容</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="本日の作業内容を記入してください"
-                      rows={5}
-                      {...field}
+            {/* 時間帯別作業内容 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <FormLabel>作業内容（時間帯別）</FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => append(DEFAULT_WORK_ENTRY)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  行を追加
+                </Button>
+              </div>
+
+              {fields.map((field, index) => (
+                <div
+                  key={field.id}
+                  className="border rounded-lg p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <FormField
+                      control={form.control}
+                      name={`workEntries.${index}.startTime`}
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                    <span className="text-muted-foreground">〜</span>
+                    <FormField
+                      control={form.control}
+                      name={`workEntries.${index}.endTime`}
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormControl>
+                            <Input type="time" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {fields.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => remove(index)}
+                        className="shrink-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name={`workEntries.${index}.content`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input
+                            placeholder="作業内容を入力"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              ))}
+
+              {/* workEntries配列レベルのエラーメッセージ */}
+              {form.formState.errors.workEntries?.root && (
+                <p className="text-sm text-destructive">
+                  {form.formState.errors.workEntries.root.message}
+                </p>
               )}
-            />
+            </div>
 
             <FormField
               control={form.control}

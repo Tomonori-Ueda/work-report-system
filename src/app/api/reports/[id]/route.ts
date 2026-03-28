@@ -102,13 +102,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { reportDate, startTime, endTime, workContent, notes } = parsed.data;
+    const { reportDate, startTime, endTime, workEntries, notes } = parsed.data;
     const workHours = calculateWorkingHours({ startTime, endTime });
+
+    const workContent = workEntries
+      .map((e) => `${e.startTime}〜${e.endTime} ${e.content}`)
+      .join('\n');
 
     const updateData = {
       reportDate,
       startTime,
       endTime,
+      workEntries,
       workContent,
       notes: notes ?? null,
       regularHours: workHours.regularHours,

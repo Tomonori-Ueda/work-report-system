@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/features/report/status-badge';
 import { WorkHoursDisplay } from '@/components/features/report/work-hours-display';
+import { WorkEntriesDisplay } from '@/components/features/report/work-entries-display';
+import { ApprovedByDisplay } from '@/components/features/report/approved-by-display';
 import { ReportForm } from '@/components/features/report/report-form';
 import { useReport } from '@/hooks/use-reports';
 import { formatDateToJapanese } from '@/lib/utils/date';
@@ -66,7 +68,7 @@ export default function ReportDetailPage({
             reportDate: report.reportDate,
             startTime: report.startTime,
             endTime: report.endTime,
-            workContent: report.workContent,
+            workEntries: report.workEntries ?? [],
             notes: report.notes ?? '',
           }}
         />
@@ -108,16 +110,20 @@ export default function ReportDetailPage({
             endTime={report.endTime}
           />
 
-          <div>
-            <p className="text-sm text-muted-foreground">作業内容</p>
-            <p className="whitespace-pre-wrap mt-1">{report.workContent}</p>
-          </div>
+          <WorkEntriesDisplay
+            workEntries={report.workEntries}
+            workContent={report.workContent}
+          />
 
           {report.notes && (
             <div>
               <p className="text-sm text-muted-foreground">備考</p>
               <p className="whitespace-pre-wrap mt-1">{report.notes}</p>
             </div>
+          )}
+
+          {report.status === REPORT_STATUS.APPROVED && (
+            <ApprovedByDisplay approvedByName={report.approvedByName} />
           )}
         </CardContent>
       </Card>

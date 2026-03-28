@@ -115,6 +115,7 @@ function LeaveApprovalSection({
   requests: Array<{
     id: string;
     userId: string;
+    userName: string;
     leaveDate: string;
     leaveType: string;
     reason: string | null;
@@ -145,6 +146,7 @@ function LeaveApprovalCard({
   request: {
     id: string;
     userId: string;
+    userName: string;
     leaveDate: string;
     leaveType: string;
     reason: string | null;
@@ -185,7 +187,7 @@ function LeaveApprovalCard({
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">
-          {formatDateToJapanese(request.leaveDate)} -{' '}
+          {request.userName} - {formatDateToJapanese(request.leaveDate)} -{' '}
           {typeLabels[request.leaveType] ?? request.leaveType}
         </CardTitle>
       </CardHeader>

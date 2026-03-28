@@ -13,16 +13,30 @@ const dateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）');
 
+/** 時間帯別作業エントリのスキーマ */
+const workEntrySchema = z
+  .object({
+    startTime: timeStringSchema,
+    endTime: timeStringSchema,
+    content: z
+      .string()
+      .min(1, '作業内容を入力してください')
+      .max(500, '500文字以内で入力してください'),
+  })
+  .refine((data) => data.startTime < data.endTime, {
+    message: '終了時刻は開始時刻より後にしてください',
+    path: ['endTime'],
+  });
+
 /** 日報作成スキーマ */
 export const createReportSchema = z
   .object({
     reportDate: dateStringSchema,
     startTime: timeStringSchema,
     endTime: timeStringSchema,
-    workContent: z
-      .string()
-      .min(1, '作業内容を入力してください')
-      .max(1000, '1000文字以内で入力してください'),
+    workEntries: z
+      .array(workEntrySchema)
+      .min(1, '作業内容を1つ以上入力してください'),
     notes: z.string().max(500, '500文字以内で入力してください').optional(),
   })
   .refine((data) => data.startTime < data.endTime, {

@@ -103,12 +103,42 @@ export async function GET(request: NextRequest) {
     query = query.orderBy('leaveDate', 'desc').limit(100);
 
     const snapshot = await query.get();
-    const requests = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
+    const requests = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        userId: data.userId as string,
+        ...data,
+      };
+    });
+
+    // ユーザー情報を付与（申請者名の表示用）
+    const userIds = [...new Set(requests.map((r) => r.userId))];
+    const usersMap = new Map<string, string>();
+
+    if (userIds.length > 0) {
+      const chunks: string[][] = [];
+      for (let i = 0; i < userIds.length; i += 30) {
+        chunks.push(userIds.slice(i, i + 30));
+      }
+      for (const chunk of chunks) {
+        const usersSnap = await db
+          .collection('users')
+          .where('__name__', 'in', chunk)
+          .get();
+        usersSnap.docs.forEach((doc) => {
+          const data = doc.data();
+          usersMap.set(doc.id, (data.displayName as string) ?? '不明');
+        });
+      }
+    }
+
+    const requestsWithUser = requests.map((r) => ({
+      ...r,
+      userName: usersMap.get(r.userId) ?? '不明',
     }));
 
-    return successResponse(requests);
+    return successResponse(requestsWithUser);
   } catch (error) {
     console.error('有給申請一覧取得エラー:', error);
     return serverErrorResponse();

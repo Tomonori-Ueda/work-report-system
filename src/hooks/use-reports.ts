@@ -59,7 +59,7 @@ export function useCreateReport() {
       reportDate: string;
       startTime: string;
       endTime: string;
-      workContent: string;
+      workEntries: Array<{ startTime: string; endTime: string; content: string }>;
       notes?: string;
     }): Promise<DailyReport> => {
       const headers = await getAuthHeaders();

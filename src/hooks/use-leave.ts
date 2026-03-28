@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getIdToken } from '@/lib/firebase/auth';
 import { queryKeys } from '@/lib/query/keys';
-import type { LeaveRequest, LeaveBalanceLog } from '@/types/leave';
+import type { LeaveRequest, LeaveRequestWithUser, LeaveBalanceLog } from '@/types/leave';
 import type { ApiSuccessResponse } from '@/types/api';
 
 /** APIリクエストのヘッダーを取得 */
@@ -19,11 +19,11 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 export function useLeaveRequests() {
   return useQuery({
     queryKey: queryKeys.leave.requests(),
-    queryFn: async (): Promise<LeaveRequest[]> => {
+    queryFn: async (): Promise<LeaveRequestWithUser[]> => {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/leave/requests', { headers });
       if (!res.ok) throw new Error('有給申請の取得に失敗しました');
-      const json = (await res.json()) as ApiSuccessResponse<LeaveRequest[]>;
+      const json = (await res.json()) as ApiSuccessResponse<LeaveRequestWithUser[]>;
       return json.data;
     },
   });

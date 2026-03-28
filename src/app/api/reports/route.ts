@@ -31,10 +31,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { reportDate, startTime, endTime, workContent, notes } = parsed.data;
+    const { reportDate, startTime, endTime, workEntries, notes } = parsed.data;
 
     // 労働時間計算
     const workHours = calculateWorkingHours({ startTime, endTime });
+
+    // workEntriesからworkContent文字列を生成（後方互換用）
+    const workContent = workEntries
+      .map((e) => `${e.startTime}〜${e.endTime} ${e.content}`)
+      .join('\n');
 
     const db = getAdminDb();
     const docRef = db.collection('daily_reports').doc();
@@ -44,12 +49,14 @@ export async function POST(request: NextRequest) {
       reportDate,
       startTime,
       endTime,
+      workEntries,
       workContent,
       notes: notes ?? null,
       regularHours: workHours.regularHours,
       overtimeHours: workHours.overtimeHours,
       status: REPORT_STATUS.SUBMITTED,
       approvedBy: null,
+      approvedByName: null,
       approvedAt: null,
       rejectReason: null,
       createdAt: FieldValue.serverTimestamp(),

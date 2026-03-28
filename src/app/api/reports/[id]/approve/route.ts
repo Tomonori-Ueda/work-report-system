@@ -44,9 +44,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // 承認者名を取得
+    const adminDoc = await db.collection('users').doc(auth.uid).get();
+    const adminName = (adminDoc.data()?.displayName as string) ?? '不明';
+
     await docRef.update({
       status: REPORT_STATUS.APPROVED,
       approvedBy: auth.uid,
+      approvedByName: adminName,
       approvedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
