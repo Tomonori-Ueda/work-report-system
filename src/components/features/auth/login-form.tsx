@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { signInWithEmail, signInWithGoogle } from '@/lib/firebase/auth';
 import { loginSchema, type LoginFormValues } from '@/lib/validations/auth';
+import { USER_ROLE } from '@/types/user';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -35,18 +36,36 @@ export function LoginForm() {
   /** セッションCookieをセットしてからリダイレクト */
   async function createSessionAndRedirect(
     idToken: string,
-    role: string | undefined
+    claimsRole: string | undefined
   ) {
-    await fetch('/api/auth/session', {
+    // roleをBodyに含めて __role Cookie を確実にセット。
+    // カスタムクレームが未設定の場合はサーバー側がFirestoreから取得する。
+    const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
+      body: JSON.stringify({ idToken, role: claimsRole }),
     });
 
-    if (role === 'admin') {
+    // サーバーがFirestoreから取得したロールを優先して使用
+    let resolvedRole: string | undefined = claimsRole;
+    if (res.ok) {
+      const json = (await res.json()) as { data?: { role?: string | null } };
+      resolvedRole = json.data?.role ?? claimsRole;
+    }
+
+    // 管理者ロール（S/A/A_special/B）はダッシュボードへ
+    const ADMIN_ROLES: string[] = [
+      USER_ROLE.S,
+      USER_ROLE.A,
+      USER_ROLE.A_SPECIAL,
+      USER_ROLE.B,
+    ];
+    if (resolvedRole && ADMIN_ROLES.includes(resolvedRole)) {
       router.push('/dashboard');
+    } else if (resolvedRole === USER_ROLE.G) {
+      router.push('/field-report/history');
     } else {
-      router.push('/report/new');
+      router.push('/report/history');
     }
   }
 

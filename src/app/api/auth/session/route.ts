@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ data: { success: true } });
+    return NextResponse.json({ data: { success: true, role: role ?? null } });
   } catch {
     return NextResponse.json(
       { error: 'INTERNAL_ERROR', message: 'セッションの作成に失敗しました' },
