@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getIdToken } from '@/lib/firebase/auth';
+import { useAuthStore } from '@/stores/auth-store';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import type { ApiSuccessResponse } from '@/types/api';
@@ -102,6 +103,8 @@ const DEFAULT_CREATE_FORM: CreateFormState = {
 /** 従業員管理画面 */
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
+  const role = useAuthStore((state) => state.role);
+  const isReadOnly = role === USER_ROLE.A_SPECIAL || role === USER_ROLE.B;
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [form, setForm] = useState<EditFormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -302,8 +305,15 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">従業員管理</h1>
-        <Button onClick={() => { setShowCreateDialog(true); setCreateError(null); }}>
+        <div>
+          <h1 className="text-2xl font-bold">従業員管理</h1>
+          {isReadOnly && (
+            <div className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              閲覧専用です。編集操作はできません。
+            </div>
+          )}
+        </div>
+        <Button onClick={() => { setShowCreateDialog(true); setCreateError(null); }} disabled={isReadOnly}>
           + 新規登録
         </Button>
       </div>
@@ -363,6 +373,7 @@ export default function EmployeesPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => openEditDialog(user)}
+                      disabled={isReadOnly}
                     >
                       <Pencil className="h-3 w-3 mr-1" />
                       編集
@@ -532,7 +543,7 @@ export default function EmployeesPage() {
             >
               キャンセル
             </Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+            <Button onClick={handleCreate} disabled={createMutation.isPending || isReadOnly}>
               {createMutation.isPending ? '登録中...' : '登録する'}
             </Button>
           </DialogFooter>
@@ -697,7 +708,7 @@ export default function EmployeesPage() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={updateMutation.isPending}
+              disabled={updateMutation.isPending || isReadOnly}
             >
               {updateMutation.isPending ? '保存中...' : '保存'}
             </Button>

@@ -23,7 +23,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getIdToken } from '@/lib/firebase/auth';
+import { useAuthStore } from '@/stores/auth-store';
 import type { ApiSuccessResponse } from '@/types/api';
+import { USER_ROLE } from '@/types/user';
 
 /** 作業内容ドキュメント型 */
 interface WorkType {
@@ -71,6 +73,9 @@ export default function WorkTypesPage() {
       return json.data;
     },
   });
+
+  const role = useAuthStore((state) => state.role);
+  const isReadOnly = role === USER_ROLE.A_SPECIAL || role === USER_ROLE.B;
 
   const workTypes = data?.workTypes ?? [];
 
@@ -215,8 +220,13 @@ export default function WorkTypesPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             作業種別・カテゴリ・表示順を管理します
           </p>
+          {isReadOnly && (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              閲覧専用です。編集操作はできません。
+            </div>
+          )}
         </div>
-        <Button onClick={openCreateDialog}>+ 作業内容を追加</Button>
+        <Button onClick={openCreateDialog} disabled={isReadOnly}>+ 作業内容を追加</Button>
       </div>
 
       {isLoading ? (
@@ -252,6 +262,7 @@ export default function WorkTypesPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEditDialog(wt)}
+                        disabled={isReadOnly}
                       >
                         編集
                       </Button>
@@ -259,7 +270,7 @@ export default function WorkTypesPage() {
                         variant="destructive"
                         size="sm"
                         onClick={() => setDeleteTarget(wt)}
-                        disabled={!wt.isActive}
+                        disabled={!wt.isActive || isReadOnly}
                       >
                         削除
                       </Button>
@@ -346,7 +357,7 @@ export default function WorkTypesPage() {
             >
               キャンセル
             </Button>
-            <Button onClick={handleSubmit} disabled={isMutating}>
+            <Button onClick={handleSubmit} disabled={isMutating || isReadOnly}>
               {isMutating ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
@@ -374,7 +385,7 @@ export default function WorkTypesPage() {
               onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
               }}
-              disabled={deleteMutation.isPending}
+              disabled={deleteMutation.isPending || isReadOnly}
             >
               {deleteMutation.isPending ? '削除中...' : '削除（無効化）'}
             </Button>

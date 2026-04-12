@@ -23,7 +23,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getIdToken } from '@/lib/firebase/auth';
+import { useAuthStore } from '@/stores/auth-store';
 import type { ApiSuccessResponse } from '@/types/api';
+import { USER_ROLE } from '@/types/user';
 
 /** 協力会社ドキュメント型 */
 interface Subcontractor {
@@ -71,6 +73,9 @@ export default function SubcontractorsPage() {
       return json.data;
     },
   });
+
+  const role = useAuthStore((state) => state.role);
+  const isReadOnly = role === USER_ROLE.A_SPECIAL || role === USER_ROLE.B;
 
   const subcontractors = data?.subcontractors ?? [];
 
@@ -215,8 +220,13 @@ export default function SubcontractorsPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             協力会社・担当者・単価情報を管理します
           </p>
+          {isReadOnly && (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              閲覧専用です。編集操作はできません。
+            </div>
+          )}
         </div>
-        <Button onClick={openCreateDialog}>+ 協力会社を追加</Button>
+        <Button onClick={openCreateDialog} disabled={isReadOnly}>+ 協力会社を追加</Button>
       </div>
 
       {isLoading ? (
@@ -256,6 +266,7 @@ export default function SubcontractorsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEditDialog(sub)}
+                        disabled={isReadOnly}
                       >
                         編集
                       </Button>
@@ -263,7 +274,7 @@ export default function SubcontractorsPage() {
                         variant="destructive"
                         size="sm"
                         onClick={() => setDeleteTarget(sub)}
-                        disabled={!sub.isActive}
+                        disabled={!sub.isActive || isReadOnly}
                       >
                         削除
                       </Button>
@@ -350,7 +361,7 @@ export default function SubcontractorsPage() {
             >
               キャンセル
             </Button>
-            <Button onClick={handleSubmit} disabled={isMutating}>
+            <Button onClick={handleSubmit} disabled={isMutating || isReadOnly}>
               {isMutating ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
@@ -378,7 +389,7 @@ export default function SubcontractorsPage() {
               onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
               }}
-              disabled={deleteMutation.isPending}
+              disabled={deleteMutation.isPending || isReadOnly}
             >
               {deleteMutation.isPending ? '削除中...' : '削除（無効化）'}
             </Button>

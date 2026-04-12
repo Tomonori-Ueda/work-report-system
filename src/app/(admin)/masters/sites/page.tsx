@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getIdToken } from '@/lib/firebase/auth';
+import { useAuthStore } from '@/stores/auth-store';
 import type { ApiSuccessResponse } from '@/types/api';
 import type { User } from '@/types/user';
 import { USER_ROLE } from '@/types/user';
@@ -87,6 +88,9 @@ export default function SitesPage() {
       return json.data;
     },
   });
+
+  const role = useAuthStore((state) => state.role);
+  const isReadOnly = role === USER_ROLE.A_SPECIAL || role === USER_ROLE.B;
 
   const supervisorUsers = usersData?.filter((u) => u.role === USER_ROLE.G && u.isActive) ?? [];
   const sites = sitesData?.sites ?? [];
@@ -247,8 +251,13 @@ export default function SitesPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             現場コード・現場名・担当監督を管理します
           </p>
+          {isReadOnly && (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              閲覧専用です。編集操作はできません。
+            </div>
+          )}
         </div>
-        <Button onClick={openCreateDialog}>+ 現場を追加</Button>
+        <Button onClick={openCreateDialog} disabled={isReadOnly}>+ 現場を追加</Button>
       </div>
 
       {sitesLoading ? (
@@ -284,6 +293,7 @@ export default function SitesPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => openEditDialog(site)}
+                        disabled={isReadOnly}
                       >
                         編集
                       </Button>
@@ -291,7 +301,7 @@ export default function SitesPage() {
                         variant="destructive"
                         size="sm"
                         onClick={() => setDeleteTarget(site)}
-                        disabled={!site.isActive}
+                        disabled={!site.isActive || isReadOnly}
                       >
                         削除
                       </Button>
@@ -418,7 +428,7 @@ export default function SitesPage() {
               onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
               }}
-              disabled={deleteMutation.isPending}
+              disabled={deleteMutation.isPending || isReadOnly}
             >
               {deleteMutation.isPending ? '削除中...' : '削除（無効化）'}
             </Button>
