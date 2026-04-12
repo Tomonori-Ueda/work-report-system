@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import type { UserRole } from '@/types/user';
+import { isAdminRole } from '@/types/user';
 
 /**
  * 認証状態を確認し、未認証ならリダイレクトするhook
@@ -22,7 +23,8 @@ export function useRequireAuth(requiredRole?: UserRole) {
 
     if (requiredRole && role !== requiredRole) {
       // ロール不一致の場合は適切な画面にリダイレクト
-      if (role === 'admin') {
+      // 管理者系ロール（S, A, A_special, B）はダッシュボードへ
+      if (role && isAdminRole(role)) {
         router.replace('/dashboard');
       } else {
         router.replace('/report/new');

@@ -29,6 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         clearAuth();
       }
+      // 認証状態の確定後にローディングを解除
+      setLoading(false);
     });
 
     return () => unsubscribe();

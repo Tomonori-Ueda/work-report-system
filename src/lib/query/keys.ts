@@ -22,4 +22,15 @@ export const queryKeys = {
       ['leave', 'requests', filters] as const,
     balance: (userId: string) => ['leave', 'balance', userId] as const,
   },
+  /** 現場日報 */
+  fieldReports: {
+    all: ['fieldReports'] as const,
+    list: (filters?: object) =>
+      ['fieldReports', 'list', filters] as const,
+    detail: (id: string) => ['fieldReports', 'detail', id] as const,
+  },
+  /** 照合チェック */
+  mismatch: {
+    check: (date: string) => ['mismatch', 'check', date] as const,
+  },
 } as const;

@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { hasOverlappingBlocks } from '@/lib/utils/time-calc';
 
 /** 時刻文字列バリデーション（HH:mm形式） */
 const timeStringSchema = z
@@ -13,21 +14,33 @@ const dateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）');
 
-/** 日報作成スキーマ */
-export const createReportSchema = z
+/** 時間ブロックのバリデーションスキーマ */
+const timeBlockSchema = z
   .object({
-    reportDate: dateStringSchema,
+    id: z.string().min(1),
     startTime: timeStringSchema,
     endTime: timeStringSchema,
-    workContent: z
-      .string()
-      .min(1, '作業内容を入力してください')
-      .max(1000, '1000文字以内で入力してください'),
-    notes: z.string().max(500, '500文字以内で入力してください').optional(),
+    siteId: z.string().nullable(),
+    siteName: z.string().min(1, '現場名を入力してください').max(100),
+    workContent: z.string().min(1, '作業内容を入力してください').max(1000),
   })
   .refine((data) => data.startTime < data.endTime, {
     message: '終了時刻は開始時刻より後にしてください',
     path: ['endTime'],
+  });
+
+/** 日報作成スキーマ（複数時間ブロック対応） */
+export const createReportSchema = z
+  .object({
+    reportDate: dateStringSchema,
+    timeBlocks: z
+      .array(timeBlockSchema)
+      .min(1, '時間ブロックを1つ以上追加してください'),
+    notes: z.string().max(500).optional(),
+  })
+  .refine((data) => !hasOverlappingBlocks(data.timeBlocks), {
+    message: '時間帯が重複しているブロックがあります',
+    path: ['timeBlocks'],
   });
 
 export type CreateReportFormValues = z.infer<typeof createReportSchema>;

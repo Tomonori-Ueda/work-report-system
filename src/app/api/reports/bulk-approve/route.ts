@@ -12,18 +12,37 @@ import {
   errorResponse,
 } from '@/lib/utils/api-response';
 import { bulkApproveSchema } from '@/lib/validations/report';
-import { REPORT_STATUS } from '@/types/report';
-import { USER_ROLE } from '@/types/user';
+import { REPORT_STATUS, type ReportStatus } from '@/types/report';
+import { USER_ROLE, type UserRole, canApprove } from '@/types/user';
 
 /** Firestoreバッチ書き込みの最大件数 */
 const BATCH_LIMIT = 500;
+
+/**
+ * ロールごとに一括承認可能なステータス一覧を返す
+ * - S（社長）: submitted / supervisor_confirmed / manager_checked → approved
+ * - A（専務/常務）: submitted / supervisor_confirmed / manager_checked → approved
+ * ※ G/B は一括承認の対象外（個別操作のみ）
+ */
+function getBulkApprovableStatuses(role: UserRole): ReportStatus[] {
+  if (role === USER_ROLE.S || role === USER_ROLE.A) {
+    return [
+      REPORT_STATUS.SUBMITTED,
+      REPORT_STATUS.SUPERVISOR_CONFIRMED,
+      REPORT_STATUS.MANAGER_CHECKED,
+    ];
+  }
+  // 本来 canApprove で弾かれているが念のため空配列を返す
+  return [];
+}
 
 /** POST /api/reports/bulk-approve - 日報を一括承認 */
 export async function POST(request: NextRequest) {
   try {
     const auth = await verifyAuth(request);
     if (!auth) return unauthorizedResponse();
-    if (auth.role !== USER_ROLE.ADMIN) return forbiddenResponse();
+    // 一括承認は S / A ロールのみ（canApprove は S と A を許可）
+    if (!canApprove(auth.role)) return forbiddenResponse();
 
     const body: unknown = await request.json();
     const parsed = bulkApproveSchema.safeParse(body);
@@ -37,6 +56,7 @@ export async function POST(request: NextRequest) {
 
     const { reportIds } = parsed.data;
     const db = getAdminDb();
+    const approvableStatuses = getBulkApprovableStatuses(auth.role);
     let approvedCount = 0;
     const failedIds: string[] = [];
 
@@ -49,7 +69,10 @@ export async function POST(request: NextRequest) {
         const docRef = db.collection('daily_reports').doc(reportId);
         const doc = await docRef.get();
 
-        if (!doc.exists || doc.data()?.status !== REPORT_STATUS.SUBMITTED) {
+        const currentStatus = doc.data()?.status as ReportStatus | undefined;
+
+        // ドキュメントが存在しない / 承認可能でないステータスはスキップ
+        if (!doc.exists || !currentStatus || !approvableStatuses.includes(currentStatus)) {
           failedIds.push(reportId);
           continue;
         }

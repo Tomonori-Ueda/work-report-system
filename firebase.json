@@ -1,5 +1,7 @@
 {
   "firestore": {
+    "database": "(default)",
+    "location": "asia-northeast1",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
@@ -10,5 +12,14 @@
       "**/.*",
       "**/node_modules/**"
     ]
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Work Report System",
+        "supportEmail": "freeplanets001@gmail.com"
+      }
+    }
   }
 }

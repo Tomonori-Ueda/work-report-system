@@ -1,28 +1,59 @@
 import type { Timestamp } from 'firebase/firestore';
 
-/** 日報ステータス */
+/** 時間ブロック（複数追加可能） */
+export interface TimeBlock {
+  /** クライアント側のユニークID（nanoid等） */
+  id: string;
+  /** 開始時刻 "HH:mm" */
+  startTime: string;
+  /** 終了時刻 "HH:mm" */
+  endTime: string;
+  /** 現場マスターのID（未選択時はnull） */
+  siteId: string | null;
+  /** 現場名（マスター名 or 手入力） */
+  siteName: string;
+  /** 作業内容 */
+  workContent: string;
+}
+
+/** 日報ステータス（5ステップ） */
 export const REPORT_STATUS = {
-  DRAFT: 'draft',
-  SUBMITTED: 'submitted',
-  APPROVED: 'approved',
-  REJECTED: 'rejected',
+  DRAFT: 'draft',                              // 下書き
+  SUBMITTED: 'submitted',                      // 提出済み（作業員→現場監督待ち）
+  SUPERVISOR_CONFIRMED: 'supervisor_confirmed', // 現場監督確認済み
+  MANAGER_CHECKED: 'manager_checked',          // 施工部長チェック済み
+  APPROVED: 'approved',                        // 専務/常務/社長承認済み
+  REJECTED: 'rejected',                        // 差し戻し
 } as const;
 
-export type ReportStatus =
-  (typeof REPORT_STATUS)[keyof typeof REPORT_STATUS];
+export type ReportStatus = (typeof REPORT_STATUS)[keyof typeof REPORT_STATUS];
 
 /** 日報ドキュメント型 */
 export interface DailyReport {
   id: string;
   userId: string;
-  reportDate: string; // "YYYY-MM-DD"
-  startTime: string; // "HH:mm"
-  endTime: string; // "HH:mm"
-  workContent: string;
+  /** 日付 "YYYY-MM-DD" */
+  reportDate: string;
+  /** 時間ブロック（複数） */
+  timeBlocks: TimeBlock[];
+  // 後方互換フィールド（既存データ用）
+  startTime?: string;
+  endTime?: string;
+  workContent?: string;
+  // 集計値
+  totalRegularHours: number;
+  totalOvertimeHours: number;
+  /** 22時以降の深夜時間 */
+  totalNightHours: number;
   notes: string | null;
-  regularHours: number;
-  overtimeHours: number;
   status: ReportStatus;
+  // 承認フロー
+  /** 確認した現場監督UID */
+  supervisorId: string | null;
+  supervisorConfirmedAt: Timestamp | null;
+  /** チェックした施工部長UID */
+  checkedBy: string | null;
+  checkedAt: Timestamp | null;
   approvedBy: string | null;
   approvedAt: Timestamp | null;
   rejectReason: string | null;
@@ -33,9 +64,7 @@ export interface DailyReport {
 /** 日報作成時の入力型 */
 export interface CreateReportInput {
   reportDate: string;
-  startTime: string;
-  endTime: string;
-  workContent: string;
+  timeBlocks: Omit<TimeBlock, 'id'>[];
   notes?: string;
 }
 

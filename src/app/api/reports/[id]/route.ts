@@ -4,7 +4,7 @@ import { type NextRequest } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/firebase/api-auth';
-import { calculateWorkingHours } from '@/lib/utils/time-calc';
+import { calculateTotalHours } from '@/lib/utils/time-calc';
 import {
   successResponse,
   unauthorizedResponse,
@@ -15,7 +15,7 @@ import {
 } from '@/lib/utils/api-response';
 import { createReportSchema } from '@/lib/validations/report';
 import { REPORT_STATUS } from '@/types/report';
-import { USER_ROLE } from '@/types/user';
+import { isAdminRole } from '@/types/user';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const data = doc.data()!;
 
-    // 作業員は自分の日報のみ閲覧可
-    if (auth.role !== USER_ROLE.ADMIN && data.userId !== auth.uid) {
+    // 管理者系ロール以外は自分の日報のみ閲覧可
+    if (!isAdminRole(auth.role) && data.userId !== auth.uid) {
       return forbiddenResponse();
     }
 
@@ -102,18 +102,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { reportDate, startTime, endTime, workContent, notes } = parsed.data;
-    const workHours = calculateWorkingHours({ startTime, endTime });
+    const { reportDate, timeBlocks, notes } = parsed.data;
+
+    // 複数時間ブロックから合計時間を計算
+    const { totalRegularHours, totalOvertimeHours, totalNightHours } =
+      calculateTotalHours(timeBlocks);
+
+    // リクエストボディの status（draft / submitted）を反映。未指定時は submitted
+    const requestStatus =
+      (body as { status?: string }).status === REPORT_STATUS.DRAFT
+        ? REPORT_STATUS.DRAFT
+        : REPORT_STATUS.SUBMITTED;
 
     const updateData = {
       reportDate,
-      startTime,
-      endTime,
-      workContent,
+      timeBlocks,
+      totalRegularHours,
+      totalOvertimeHours,
+      totalNightHours,
       notes: notes ?? null,
-      regularHours: workHours.regularHours,
-      overtimeHours: workHours.overtimeHours,
-      status: REPORT_STATUS.SUBMITTED,
+      status: requestStatus,
       rejectReason: null,
       updatedAt: FieldValue.serverTimestamp(),
     };

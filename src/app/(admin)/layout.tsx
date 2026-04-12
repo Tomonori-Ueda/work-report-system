@@ -3,12 +3,13 @@
 import { type ReactNode } from 'react';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { AdminSidebar } from '@/components/features/layout/admin-sidebar';
+import { isAdminRole } from '@/types/user';
 
 /** 管理者レイアウト: サイドバー + メインコンテンツ */
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, role } = useRequireAuth('admin');
+  const { isLoading, isAuthenticated, role } = useRequireAuth();
 
-  if (isLoading || !isAuthenticated || role !== 'admin') {
+  if (isLoading || !isAuthenticated || !role || !isAdminRole(role)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

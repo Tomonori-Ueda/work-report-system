@@ -7,6 +7,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { getFirebaseAuth } from './config';
+import type { UserRole } from '@/types/user';
 
 /** メール/パスワードでログイン */
 export async function signInWithEmail(
@@ -49,10 +50,10 @@ export async function getIdToken(): Promise<string | null> {
 }
 
 /** IDトークンのカスタムクレーム（ロール）を取得 */
-export async function getUserRole(): Promise<string | null> {
+export async function getUserRole(): Promise<UserRole | null> {
   const auth = getFirebaseAuth();
   const user = auth.currentUser;
   if (!user) return null;
   const tokenResult = await user.getIdTokenResult();
-  return (tokenResult.claims['role'] as string) ?? null;
+  return (tokenResult.claims['role'] as UserRole) ?? null;
 }

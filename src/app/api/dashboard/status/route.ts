@@ -10,14 +10,15 @@ import {
   serverErrorResponse,
   errorResponse,
 } from '@/lib/utils/api-response';
-import { USER_ROLE } from '@/types/user';
+import { isAdminRole } from '@/types/user';
+import { REPORT_STATUS } from '@/types/report';
 
 /** GET /api/dashboard/status - 提出状況サマリを取得 */
 export async function GET(request: NextRequest) {
   try {
     const auth = await verifyAuth(request);
     if (!auth) return unauthorizedResponse();
-    if (auth.role !== USER_ROLE.ADMIN) return forbiddenResponse();
+    if (!isAdminRole(auth.role)) return forbiddenResponse();
 
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
@@ -28,10 +29,9 @@ export async function GET(request: NextRequest) {
 
     const db = getAdminDb();
 
-    // アクティブな作業員を取得
+    // アクティブな全ユーザーを取得（6ランク対応のため role フィルタ不要）
     const workersSnap = await db
       .collection('users')
-      .where('role', '==', USER_ROLE.WORKER)
       .where('isActive', '==', true)
       .get();
 
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
           ...worker,
           status: report.status,
         });
-        if (report.status === 'approved') {
+        if (report.status === REPORT_STATUS.APPROVED) {
           approvedCount++;
         }
       } else {

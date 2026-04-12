@@ -50,6 +50,8 @@ export default function AdminReportsPage() {
           <SelectContent>
             <SelectItem value="all">すべて</SelectItem>
             <SelectItem value={REPORT_STATUS.SUBMITTED}>提出済</SelectItem>
+            <SelectItem value={REPORT_STATUS.SUPERVISOR_CONFIRMED}>現場監督確認済</SelectItem>
+            <SelectItem value={REPORT_STATUS.MANAGER_CHECKED}>施工部長確認済</SelectItem>
             <SelectItem value={REPORT_STATUS.APPROVED}>承認済</SelectItem>
             <SelectItem value={REPORT_STATUS.REJECTED}>差戻</SelectItem>
             <SelectItem value={REPORT_STATUS.DRAFT}>下書き</SelectItem>
@@ -97,10 +99,14 @@ export default function AdminReportsPage() {
                 </TableCell>
                 <TableCell>{report.userName}</TableCell>
                 <TableCell>
-                  {report.startTime} 〜 {report.endTime}
+                  {report.timeBlocks && report.timeBlocks.length > 0
+                    ? report.timeBlocks.length === 1
+                      ? `${report.timeBlocks[0]?.startTime ?? '—'} 〜 ${report.timeBlocks[0]?.endTime ?? '—'}`
+                      : `${report.timeBlocks[0]?.startTime ?? '—'} 〜 ${report.timeBlocks[report.timeBlocks.length - 1]?.endTime ?? '—'}（${report.timeBlocks.length}ブロック）`
+                    : `${report.startTime ?? '—'} 〜 ${report.endTime ?? '—'}`}
                 </TableCell>
-                <TableCell>{report.regularHours}h</TableCell>
-                <TableCell>{report.overtimeHours}h</TableCell>
+                <TableCell>{report.totalRegularHours}h</TableCell>
+                <TableCell>{report.totalOvertimeHours}h</TableCell>
                 <TableCell>
                   <StatusBadge status={report.status} />
                 </TableCell>

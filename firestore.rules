@@ -1,48 +1,105 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ヘルパー関数
+    // 認証済みユーザーかチェック
     function isAuthenticated() {
       return request.auth != null;
     }
-    function isAdmin() {
-      return isAuthenticated() && request.auth.token.role == 'admin';
+
+    // ロールを取得
+    function getRole() {
+      return request.auth.token.role;
     }
+
+    // 管理者系ロール（S/A/A_special/B）かチェック
+    function isAdminUser() {
+      return isAuthenticated() && getRole() in ['S', 'A', 'A_special', 'B'];
+    }
+
+    // 承認権限を持つロール（S/A）かチェック
+    function canApprove() {
+      return isAuthenticated() && getRole() in ['S', 'A'];
+    }
+
+    // 現場監督（Gロール）かチェック
+    function isSupervisor() {
+      return isAuthenticated() && getRole() == 'G';
+    }
+
+    // リソースの所有者かチェック
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // users コレクション
+    // ユーザーコレクション
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdminUser();
 
-      // leave_balance_logs サブコレクション
+      // 有給残日数変更ログ（サブコレクション）
       match /leave_balance_logs/{logId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin();
+        allow read: if isOwner(userId) || isAdminUser();
+        allow write: if isAdminUser();
       }
     }
 
-    // daily_reports コレクション
+    // 日報コレクション
     match /daily_reports/{reportId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (
+        isAdminUser() || resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        // 本人は下書き・差戻の日報のみ編集可
+        (resource.data.userId == request.auth.uid &&
+         resource.data.status in ['draft', 'rejected']) ||
+        // 現場監督はsupervisor_confirmed更新のみ可
+        isSupervisor() ||
+        // 管理者系ロールは承認・差戻・確認操作可
+        isAdminUser()
+      );
       allow delete: if false;
     }
 
-    // leave_requests コレクション
+    // 有給申請コレクション
     match /leave_requests/{requestId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
+      allow read: if isAuthenticated() && (
+        isAdminUser() || resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdminUser();
+      allow delete: if false;
+    }
+
+    // 現場マスター
+    match /sites/{siteId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminUser();
+    }
+
+    // 協力会社マスター
+    match /subcontractors/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminUser();
+    }
+
+    // 作業内容マスター
+    match /work_types/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminUser();
+    }
+
+    // 現場日報
+    match /field_reports/{id} {
+      allow read: if isAuthenticated() && (
+        isAdminUser() ||
+        isSupervisor() && resource.data.supervisorId == request.auth.uid
+      );
+      allow create: if isSupervisor() || isAdminUser();
+      allow update: if (isSupervisor() && resource.data.supervisorId == request.auth.uid)
+        || isAdminUser();
       allow delete: if false;
     }
   }

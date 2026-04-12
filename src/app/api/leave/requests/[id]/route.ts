@@ -14,7 +14,8 @@ import {
 } from '@/lib/utils/api-response';
 import { approveLeaveRequestSchema } from '@/lib/validations/leave';
 import { LEAVE_STATUS, LEAVE_TYPE, BALANCE_CHANGE_TYPE } from '@/types/leave';
-import { USER_ROLE } from '@/types/user';
+import { canApprove } from '@/types/user';
+import { calcConsumeDays } from '@/lib/utils/leave-calc';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -25,7 +26,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const auth = await verifyAuth(request);
     if (!auth) return unauthorizedResponse();
-    if (auth.role !== USER_ROLE.ADMIN) return forbiddenResponse();
+    if (!canApprove(auth.role)) return forbiddenResponse();
 
     const { id } = await params;
     const body: unknown = await request.json();
@@ -69,11 +70,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
           const currentBalance =
             (userDoc.data()?.annualLeaveBalance as number) ?? 0;
-          if (currentBalance <= 0) {
+
+          // 申請単位に応じた消費日数を計算
+          const consumeDays = calcConsumeDays(
+            (data.leaveUnit as string | undefined) ?? 'full_day',
+            data.leaveHours as number | null | undefined
+          );
+
+          if (currentBalance < consumeDays) {
             throw new Error('有給休暇の残日数が不足しています');
           }
 
-          const newBalance = currentBalance - 1;
+          const newBalance = currentBalance - consumeDays;
 
           // ユーザーの残日数を更新
           transaction.update(userRef, {
@@ -93,9 +101,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           transaction.set(logRef, {
             userId: data.userId,
             changeType: BALANCE_CHANGE_TYPE.USE,
-            changeDays: -1,
+            changeDays: -consumeDays,
             balanceAfter: newBalance,
-            note: `有給休暇使用（${data.leaveDate}）`,
+            note: `有給休暇使用（${data.leaveDate as string}）`,
             createdAt: FieldValue.serverTimestamp(),
           });
         });

@@ -7,12 +7,19 @@ import { useLeaveRequests } from '@/hooks/use-leave';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDateToJapanese } from '@/lib/utils/date';
-import { LEAVE_STATUS, LEAVE_TYPE } from '@/types/leave';
+import { LEAVE_STATUS, LEAVE_TYPE, LEAVE_UNIT } from '@/types/leave';
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
   [LEAVE_TYPE.PAID]: '有給休暇',
   [LEAVE_TYPE.SPECIAL]: '特別休暇',
   [LEAVE_TYPE.UNPAID]: '無給休暇',
+};
+
+const LEAVE_UNIT_LABELS: Record<string, string> = {
+  [LEAVE_UNIT.FULL_DAY]: '全日',
+  [LEAVE_UNIT.HALF_DAY_AM]: '午前半休',
+  [LEAVE_UNIT.HALF_DAY_PM]: '午後半休',
+  [LEAVE_UNIT.HOURLY]: '時間有給',
 };
 
 const LEAVE_STATUS_CONFIG: Record<
@@ -68,6 +75,11 @@ export default function LeavePage() {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {LEAVE_TYPE_LABELS[req.leaveType] ?? req.leaveType}
+                        {' ・ '}
+                        {LEAVE_UNIT_LABELS[req.leaveUnit] ?? req.leaveUnit}
+                        {req.leaveUnit === LEAVE_UNIT.HOURLY && req.leaveHours != null
+                          ? `（${req.leaveHours}時間）`
+                          : ''}
                       </p>
                     </div>
                     <Badge variant={statusConfig.variant}>

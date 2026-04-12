@@ -7,19 +7,100 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useUiStore } from '@/stores/ui-store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import { USER_ROLE, type UserRole } from '@/types/user';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'ダッシュボード', icon: '📊' },
-  { href: '/reports', label: '日報管理', icon: '📋' },
-  { href: '/employees', label: '従業員管理', icon: '👥' },
-] as const;
+/** ナビゲーションアイテム定義 */
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  /** このメニューを表示できるロール。undefinedの場合は全管理者ロールに表示 */
+  allowedRoles?: UserRole[];
+}
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    href: '/dashboard',
+    label: 'ダッシュボード',
+    icon: '📊',
+    // S/A/A_special/B 全員
+  },
+  {
+    href: '/reports',
+    label: '日報管理',
+    icon: '📋',
+    // S/A/A_special/B 全員
+  },
+  {
+    href: '/reports/mismatch',
+    label: '照合チェック',
+    icon: '⚠️',
+    // S/A/A_special/B 全員（管理者系ロールに加え現場監督Gも対象だがここでは管理者画面のため管理者全員）
+  },
+  {
+    href: '/salary',
+    label: '勤怠集計・給与',
+    icon: '💴',
+    // S/A/A_special/B 全員（管理者系）
+  },
+  {
+    href: '/masters',
+    label: 'マスター管理',
+    icon: '🗄️',
+    // S/A/A_special のみ
+    allowedRoles: [USER_ROLE.S, USER_ROLE.A, USER_ROLE.A_SPECIAL],
+  },
+  {
+    href: '/employees',
+    label: '従業員管理',
+    icon: '👥',
+    // S/A/A_special のみ（マスター管理系）
+    allowedRoles: [USER_ROLE.S, USER_ROLE.A, USER_ROLE.A_SPECIAL],
+  },
+  {
+    href: '/leave-calendar',
+    label: '有給カレンダー',
+    icon: '📅',
+    // S/A/A_special のみ
+    allowedRoles: [USER_ROLE.S, USER_ROLE.A, USER_ROLE.A_SPECIAL],
+  },
+];
+
+/** ロール表示名マップ */
+const ROLE_LABEL: Record<UserRole, string> = {
+  [USER_ROLE.S]: '社長',
+  [USER_ROLE.A]: '専務・常務',
+  [USER_ROLE.A_SPECIAL]: '総務部長',
+  [USER_ROLE.B]: '施工部長',
+  [USER_ROLE.G]: '現場監督',
+  [USER_ROLE.GENERAL]: '一般',
+};
+
+/** ロールバッジのカラーマップ */
+function getRoleBadgeClass(role: UserRole): string {
+  switch (role) {
+    case USER_ROLE.S:
+      return 'bg-red-100 text-red-700 border-red-200';
+    case USER_ROLE.A:
+      return 'bg-orange-100 text-orange-700 border-orange-200';
+    case USER_ROLE.A_SPECIAL:
+      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    case USER_ROLE.B:
+      return 'bg-purple-100 text-purple-700 border-purple-200';
+    case USER_ROLE.G:
+      return 'bg-blue-100 text-blue-700 border-blue-200';
+    default:
+      return 'bg-gray-100 text-gray-700 border-gray-200';
+  }
+}
 
 /** サイドバーのナビ内容 */
 function SidebarContent() {
   const pathname = usePathname();
-  const { displayName } = useAuthStore();
+  const { displayName, role } = useAuthStore();
   const router = useRouter();
 
   async function handleLogout() {
@@ -27,6 +108,13 @@ function SidebarContent() {
     await fetch('/api/auth/session', { method: 'DELETE' });
     router.replace('/login');
   }
+
+  // ロールに応じてメニューをフィルタ
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (!item.allowedRoles) return true;
+    if (!role) return false;
+    return item.allowedRoles.includes(role);
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -38,7 +126,7 @@ function SidebarContent() {
       <Separator />
 
       <nav className="flex-1 space-y-1 p-4">
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + '/');
           return (
@@ -61,10 +149,21 @@ function SidebarContent() {
 
       <Separator />
 
-      <div className="p-4">
-        <p className="mb-2 text-sm text-muted-foreground">
-          {displayName ?? 'ユーザー'}
-        </p>
+      {/* ユーザー情報 + ロールバッジ */}
+      <div className="p-4 space-y-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium truncate">
+            {displayName ?? 'ユーザー'}
+          </p>
+          {role && (
+            <Badge
+              variant="outline"
+              className={cn('text-xs', getRoleBadgeClass(role))}
+            >
+              {ROLE_LABEL[role]}
+            </Badge>
+          )}
+        </div>
         <Button
           variant="outline"
           size="sm"

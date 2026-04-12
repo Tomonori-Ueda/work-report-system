@@ -28,8 +28,12 @@ export function PendingReportsTable({ reports }: PendingReportsTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const bulkApprove = useBulkApprove();
 
+  // S/A ロールが一括承認可能なのは manager_checked のレポート
   const submittedReports = reports.filter(
-    (r) => r.status === REPORT_STATUS.SUBMITTED
+    (r) =>
+      r.status === REPORT_STATUS.SUBMITTED ||
+      r.status === REPORT_STATUS.SUPERVISOR_CONFIRMED ||
+      r.status === REPORT_STATUS.MANAGER_CHECKED
   );
 
   function toggleSelect(id: string) {
@@ -129,9 +133,13 @@ export function PendingReportsTable({ reports }: PendingReportsTableProps) {
               </TableCell>
               <TableCell>{report.userName}</TableCell>
               <TableCell>
-                {report.startTime} 〜 {report.endTime}
+                {report.timeBlocks && report.timeBlocks.length > 0
+                  ? report.timeBlocks.length === 1
+                    ? `${report.timeBlocks[0]?.startTime ?? '—'} 〜 ${report.timeBlocks[0]?.endTime ?? '—'}`
+                    : `${report.timeBlocks[0]?.startTime ?? '—'} 〜 ${report.timeBlocks[report.timeBlocks.length - 1]?.endTime ?? '—'}（${report.timeBlocks.length}ブロック）`
+                  : `${report.startTime ?? '—'} 〜 ${report.endTime ?? '—'}`}
               </TableCell>
-              <TableCell>{report.overtimeHours}h</TableCell>
+              <TableCell>{report.totalOvertimeHours}h</TableCell>
               <TableCell>
                 <StatusBadge status={report.status} />
               </TableCell>

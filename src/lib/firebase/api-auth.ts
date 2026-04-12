@@ -1,11 +1,13 @@
 import 'server-only';
 
 import { getAdminAuth } from './admin';
+import type { UserRole } from '@/types/user';
+import { USER_ROLE } from '@/types/user';
 
 /** 認証情報 */
 export interface AuthInfo {
   uid: string;
-  role: string;
+  role: UserRole;
 }
 
 /**
@@ -23,7 +25,8 @@ export async function verifyAuth(request: Request): Promise<AuthInfo | null> {
 
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
-    const role = (decoded['role'] as string) ?? 'worker';
+    // カスタムクレームにroleがない場合は一般ユーザー（general）をデフォルトとする
+    const role = ((decoded['role'] as string) ?? USER_ROLE.GENERAL) as UserRole;
     return { uid: decoded.uid, role };
   } catch {
     return null;

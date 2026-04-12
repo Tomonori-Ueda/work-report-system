@@ -64,9 +64,7 @@ export default function ReportDetailPage({
           reportId={report.id}
           defaultValues={{
             reportDate: report.reportDate,
-            startTime: report.startTime,
-            endTime: report.endTime,
-            workContent: report.workContent,
+            timeBlocks: report.timeBlocks,
             notes: report.notes ?? '',
           }}
         />
@@ -92,26 +90,41 @@ export default function ReportDetailPage({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">開始時刻</p>
-              <p className="font-medium">{report.startTime}</p>
+          {/* 時間ブロック一覧 */}
+          {report.timeBlocks && report.timeBlocks.length > 0 ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">時間ブロック</p>
+              {report.timeBlocks.map((block, idx) => (
+                <div
+                  key={block.id}
+                  className="rounded-md border border-border p-3 space-y-1"
+                >
+                  <p className="text-xs text-muted-foreground font-medium">
+                    ブロック {idx + 1}
+                    {block.siteName ? ` — ${block.siteName}` : ''}
+                  </p>
+                  <p className="text-sm font-medium">
+                    {block.startTime} 〜 {block.endTime}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{block.workContent}</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">終了時刻</p>
-              <p className="font-medium">{report.endTime}</p>
+          ) : (
+            /* 後方互換: 古い単一ブロックデータ */
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">開始時刻</p>
+                <p className="font-medium">{report.startTime ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">終了時刻</p>
+                <p className="font-medium">{report.endTime ?? '—'}</p>
+              </div>
             </div>
-          </div>
+          )}
 
-          <WorkHoursDisplay
-            startTime={report.startTime}
-            endTime={report.endTime}
-          />
-
-          <div>
-            <p className="text-sm text-muted-foreground">作業内容</p>
-            <p className="whitespace-pre-wrap mt-1">{report.workContent}</p>
-          </div>
+          <WorkHoursDisplay timeBlocks={report.timeBlocks} />
 
           {report.notes && (
             <div>

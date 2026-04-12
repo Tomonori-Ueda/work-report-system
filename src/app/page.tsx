@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
+import { isAdminRole } from '@/types/user';
 
 /** ルートページ: 認証状態に応じてリダイレクト */
 export default function HomePage() {
@@ -20,7 +21,7 @@ export default function HomePage() {
       return;
     }
 
-    if (role === 'admin') {
+    if (role && isAdminRole(role)) {
       router.replace('/dashboard');
     } else {
       router.replace('/report/new');

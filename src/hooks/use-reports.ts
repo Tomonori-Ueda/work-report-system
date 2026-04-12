@@ -3,8 +3,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getIdToken } from '@/lib/firebase/auth';
 import { queryKeys } from '@/lib/query/keys';
-import type { DailyReport, DailyReportWithUser, ReportFilter } from '@/types/report';
-import type { ApiSuccessResponse, BulkApproveResponse } from '@/types/api';
+import type { DailyReport, DailyReportWithUser, ReportFilter, CreateReportInput } from '@/types/report';
+import type { ApiSuccessResponse, BulkApproveResponse, MismatchCheckResponse } from '@/types/api';
 
 /** APIリクエストのヘッダーを取得 */
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -50,18 +50,15 @@ export function useReport(id: string) {
   });
 }
 
+/** 日報作成のミューテーション入力型（timeBlocksベース + status） */
+type CreateReportMutationInput = CreateReportInput & { status?: 'draft' | 'submitted' };
+
 /** 日報を作成 */
 export function useCreateReport() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: {
-      reportDate: string;
-      startTime: string;
-      endTime: string;
-      workContent: string;
-      notes?: string;
-    }): Promise<DailyReport> => {
+    mutationFn: async (data: CreateReportMutationInput): Promise<DailyReport> => {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/reports', {
         method: 'POST',
@@ -107,7 +104,7 @@ export function useBulkApprove() {
   });
 }
 
-/** 日報を承認 */
+/** 日報を承認（S/Aロール用） */
 export function useApproveReport() {
   const queryClient = useQueryClient();
 
@@ -151,5 +148,71 @@ export function useRejectReport() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
+  });
+}
+
+/**
+ * 現場監督確認（Gロール用）
+ * PUT /api/reports/:id/approve を呼び、サーバー側でロールに応じたステータス遷移を行う
+ */
+export function useSupervisorConfirm() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (reportId: string): Promise<void> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/reports/${reportId}/approve`, {
+        method: 'PUT',
+        headers,
+      });
+      if (!res.ok) throw new Error('確認処理に失敗しました');
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+/**
+ * 施工部長チェック（Bロール用）
+ * PUT /api/reports/:id/approve を呼び、サーバー側でロールに応じたステータス遷移を行う
+ */
+export function useManagerCheck() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (reportId: string): Promise<void> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/reports/${reportId}/approve`, {
+        method: 'PUT',
+        headers,
+      });
+      if (!res.ok) throw new Error('チェック処理に失敗しました');
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+/**
+ * 照合チェック結果を取得（管理者・現場監督用）
+ * GET /api/reports/mismatch?date=YYYY-MM-DD
+ */
+export function useMismatchCheck(date: string) {
+  return useQuery({
+    queryKey: queryKeys.mismatch.check(date),
+    queryFn: async (): Promise<MismatchCheckResponse> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/reports/mismatch?date=${encodeURIComponent(date)}`, {
+        headers,
+      });
+      if (!res.ok) throw new Error('照合チェックの取得に失敗しました');
+      const json = (await res.json()) as ApiSuccessResponse<MismatchCheckResponse>;
+      return json.data;
+    },
+    enabled: !!date,
   });
 }

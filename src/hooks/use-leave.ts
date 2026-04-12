@@ -5,6 +5,7 @@ import { getIdToken } from '@/lib/firebase/auth';
 import { queryKeys } from '@/lib/query/keys';
 import type { LeaveRequest, LeaveBalanceLog } from '@/types/leave';
 import type { ApiSuccessResponse } from '@/types/api';
+import type { NextGrantInfo, GrantEntry } from '@/lib/utils/leave-calc';
 
 /** APIリクエストのヘッダーを取得 */
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -36,6 +37,11 @@ export function useLeaveBalance(userId: string) {
     queryFn: async (): Promise<{
       balance: number;
       logs: LeaveBalanceLog[];
+      hireDate: string | null;
+      nextGrantInfo: NextGrantInfo | null;
+      theoreticalBalance: number | null;
+      expiringGrants: GrantEntry[];
+      maxDays: number;
     }> => {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/leave/balance/${userId}`, { headers });
@@ -43,6 +49,11 @@ export function useLeaveBalance(userId: string) {
       const json = (await res.json()) as ApiSuccessResponse<{
         balance: number;
         logs: LeaveBalanceLog[];
+        hireDate: string | null;
+        nextGrantInfo: NextGrantInfo | null;
+        theoreticalBalance: number | null;
+        expiringGrants: GrantEntry[];
+        maxDays: number;
       }>;
       return json.data;
     },
@@ -58,6 +69,10 @@ export function useCreateLeaveRequest() {
     mutationFn: async (data: {
       leaveDate: string;
       leaveType: string;
+      leaveUnit: string;
+      leaveHours?: number;
+      startTime?: string;
+      endTime?: string;
       reason?: string;
     }): Promise<LeaveRequest> => {
       const headers = await getAuthHeaders();

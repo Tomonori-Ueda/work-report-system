@@ -10,7 +10,13 @@ import {
   notFoundResponse,
   serverErrorResponse,
 } from '@/lib/utils/api-response';
-import { USER_ROLE } from '@/types/user';
+import { isAdminRole } from '@/types/user';
+import {
+  getNextGrantInfo,
+  calculateTheoreticalBalance,
+  getExpiringGrants,
+  ANNUAL_LEAVE_MAX_DAYS,
+} from '@/lib/utils/leave-calc';
 
 interface RouteParams {
   params: Promise<{ userId: string }>;
@@ -24,8 +30,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { userId } = await params;
 
-    // 自分自身のデータか管理者のみ閲覧可
-    if (auth.role !== USER_ROLE.ADMIN && auth.uid !== userId) {
+    // 自分自身のデータか管理者系ロールのみ閲覧可
+    if (!isAdminRole(auth.role) && auth.uid !== userId) {
       return forbiddenResponse();
     }
 
@@ -36,7 +42,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFoundResponse('ユーザーが見つかりません');
     }
 
-    const balance = (userDoc.data()?.annualLeaveBalance as number) ?? 0;
+    const userData = userDoc.data()!;
+    const balance = (userData.annualLeaveBalance as number) ?? 0;
+    const hireDate = (userData.hireDate as string | null | undefined) ?? null;
 
     // 残日数変更ログを取得
     const logsSnap = await db
@@ -52,7 +60,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       ...doc.data(),
     }));
 
-    return successResponse({ balance, logs });
+    // hireDate がある場合のみ自動計算情報を付加
+    const nextGrantInfo =
+      hireDate != null ? getNextGrantInfo(hireDate) : null;
+    const theoreticalBalance =
+      hireDate != null ? calculateTheoreticalBalance(hireDate) : null;
+    // 30日以内に有効期限が切れる付与分を警告
+    const expiringGrants =
+      hireDate != null ? getExpiringGrants(hireDate, 30) : [];
+
+    return successResponse({
+      balance,
+      logs,
+      hireDate,
+      nextGrantInfo,
+      theoreticalBalance,
+      expiringGrants,
+      maxDays: ANNUAL_LEAVE_MAX_DAYS,
+    });
   } catch (error) {
     console.error('有給残日数取得エラー:', error);
     return serverErrorResponse();

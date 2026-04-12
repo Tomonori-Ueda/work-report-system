@@ -1,12 +1,8 @@
 /**
- * 管理者アカウント作成スクリプト
+ * テストアカウント作成スクリプト（6ランク対応）
  *
  * 使い方:
  *   npx tsx scripts/seed-admin.ts
- *
- * 事前準備:
- *   - .env.local に Firebase Admin SDK の環境変数を設定
- *   - Firebase Authenticationが有効であること
  */
 
 import { initializeApp, cert } from 'firebase-admin/app';
@@ -18,10 +14,7 @@ dotenv.config({ path: '.env.local' });
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
-  /\\n/g,
-  '\n'
-);
+const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
 if (!projectId || !clientEmail || !privateKey) {
   console.error('Firebase Admin SDK の環境変数が不足しています');
@@ -36,115 +29,139 @@ const app = initializeApp({
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-async function seedAdmin() {
-  const adminEmail = 'admin@example.com';
-  const adminPassword = 'admin123456';
+interface Account {
+  email: string;
+  password: string;
+  displayName: string;
+  role: string;
+  department: string;
+  hireDate: string;
+  monthlySalary: number;
+}
+
+const ACCOUNTS: Account[] = [
+  // 社長（S）
+  {
+    email: 'president@daishin.test',
+    password: 'Test1234!',
+    displayName: '社長 テスト',
+    role: 'S',
+    department: '経営',
+    hireDate: '2000-04-01',
+    monthlySalary: 800000,
+  },
+  // 専務（A）
+  {
+    email: 'director@daishin.test',
+    password: 'Test1234!',
+    displayName: '専務 テスト',
+    role: 'A',
+    department: '経営',
+    hireDate: '2005-04-01',
+    monthlySalary: 600000,
+  },
+  // 総務部長（A_special）
+  {
+    email: 'general-affairs@daishin.test',
+    password: 'Test1234!',
+    displayName: '総務部長 テスト',
+    role: 'A_special',
+    department: '総務',
+    hireDate: '2010-04-01',
+    monthlySalary: 450000,
+  },
+  // 施工部長（B）
+  {
+    email: 'construction-manager@daishin.test',
+    password: 'Test1234!',
+    displayName: '施工部長 テスト',
+    role: 'B',
+    department: '施工',
+    hireDate: '2008-04-01',
+    monthlySalary: 500000,
+  },
+  // 現場監督（G）
+  {
+    email: 'supervisor@daishin.test',
+    password: 'Test1234!',
+    displayName: '横山 憲章',
+    role: 'G',
+    department: '施工',
+    hireDate: '2015-04-01',
+    monthlySalary: 380000,
+  },
+  // 作業員（general）
+  {
+    email: 'worker@daishin.test',
+    password: 'Test1234!',
+    displayName: '田中 太郎',
+    role: 'general',
+    department: '施工',
+    hireDate: '2020-04-01',
+    monthlySalary: 280000,
+  },
+];
+
+async function upsertAccount(account: Account): Promise<void> {
+  let uid: string;
 
   try {
-    // Firebase Auth にユーザー作成
-    let userRecord;
-    try {
-      userRecord = await auth.getUserByEmail(adminEmail);
-      console.log(`既存の管理者ユーザーを使用: ${userRecord.uid}`);
-    } catch {
-      userRecord = await auth.createUser({
-        email: adminEmail,
-        password: adminPassword,
-        displayName: '管理者',
-      });
-      console.log(`管理者ユーザーを作成: ${userRecord.uid}`);
-    }
-
-    // カスタムクレームでロール設定
-    await auth.setCustomUserClaims(userRecord.uid, { role: 'admin' });
-    console.log('カスタムクレーム設定完了: role=admin');
-
-    // Firestore にユーザードキュメント作成
-    await db
-      .collection('users')
-      .doc(userRecord.uid)
-      .set(
-        {
-          email: adminEmail,
-          displayName: '管理者',
-          role: 'admin',
-          department: '管理部',
-          annualLeaveBalance: 20,
-          isActive: true,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    console.log('Firestoreドキュメント作成完了');
-
-    console.log('\n--- 管理者アカウント情報 ---');
-    console.log(`メール: ${adminEmail}`);
-    console.log(`パスワード: ${adminPassword}`);
-    console.log(`UID: ${userRecord.uid}`);
-    console.log('ロール: admin');
-  } catch (error) {
-    console.error('エラー:', error);
-    process.exit(1);
-  }
-}
-
-async function seedWorkers() {
-  const workers = [
-    { email: 'tanaka@example.com', name: '田中 太郎', department: '建設部' },
-    { email: 'sato@example.com', name: '佐藤 花子', department: '建設部' },
-    { email: 'suzuki@example.com', name: '鈴木 一郎', department: '設備部' },
-    { email: 'yamada@example.com', name: '山田 次郎', department: '設備部' },
-  ];
-
-  for (const worker of workers) {
-    try {
-      let userRecord;
-      try {
-        userRecord = await auth.getUserByEmail(worker.email);
-        console.log(`既存の作業員を使用: ${worker.name} (${userRecord.uid})`);
-      } catch {
-        userRecord = await auth.createUser({
-          email: worker.email,
-          password: 'worker123456',
-          displayName: worker.name,
-        });
-        console.log(`作業員を作成: ${worker.name} (${userRecord.uid})`);
-      }
-
-      await auth.setCustomUserClaims(userRecord.uid, { role: 'worker' });
-
-      await db
-        .collection('users')
-        .doc(userRecord.uid)
-        .set(
-          {
-            email: worker.email,
-            displayName: worker.name,
-            role: 'worker',
-            department: worker.department,
-            annualLeaveBalance: 20,
-            isActive: true,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-    } catch (error) {
-      console.error(`${worker.name}の作成エラー:`, error);
-    }
+    const existing = await auth.getUserByEmail(account.email);
+    uid = existing.uid;
+    await auth.updateUser(uid, {
+      displayName: account.displayName,
+      password: account.password,
+    });
+    console.log(`  更新: ${account.email}`);
+  } catch {
+    const created = await auth.createUser({
+      email: account.email,
+      password: account.password,
+      displayName: account.displayName,
+    });
+    uid = created.uid;
+    console.log(`  作成: ${account.email}`);
   }
 
-  console.log('\nテスト作業員の作成完了');
+  // カスタムクレームにロールをセット
+  await auth.setCustomUserClaims(uid, { role: account.role });
+
+  // Firestoreにupsert
+  await db.collection('users').doc(uid).set(
+    {
+      email: account.email,
+      displayName: account.displayName,
+      role: account.role,
+      department: account.department,
+      annualLeaveBalance: 10,
+      hireDate: account.hireDate,
+      monthlySalary: account.monthlySalary,
+      isActive: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
-async function main() {
-  console.log('=== 初期データ投入開始 ===\n');
-  await seedAdmin();
+async function main(): Promise<void> {
+  console.log('=== テストアカウント作成開始 ===\n');
+
+  for (const account of ACCOUNTS) {
+    await upsertAccount(account);
+  }
+
+  console.log('\n=== 完了 ===\n');
+  console.log('ログイン情報:');
   console.log('');
-  await seedWorkers();
-  console.log('\n=== 初期データ投入完了 ===');
-  process.exit(0);
+  console.log('【管理者系】');
+  console.log('  社長（S）    : president@daishin.test       / Test1234!');
+  console.log('  専務（A）    : director@daishin.test        / Test1234!');
+  console.log('  総務部長（A_special）: general-affairs@daishin.test / Test1234!');
+  console.log('  施工部長（B）: construction-manager@daishin.test / Test1234!');
+  console.log('');
+  console.log('【現場系】');
+  console.log('  現場監督（G）: supervisor@daishin.test      / Test1234!');
+  console.log('  作業員（general）: worker@daishin.test      / Test1234!');
 }
 
-main();
+main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
