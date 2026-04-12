@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { getIdToken } from '@/lib/firebase/auth';
 import { useRequireAuth } from '@/hooks/use-auth';
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle2, AlertTriangle, FileQuestion } from 'lucide-react';
+import { AlertCircle, CheckCircle2, AlertTriangle, FileQuestion, ClipboardCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ApiSuccessResponse } from '@/types/api';
 import type { MismatchCheckResponse, MismatchRecord } from '@/types/api';
@@ -191,20 +192,30 @@ export default function FieldReportMismatchPage() {
                   </div>
                   <MismatchBadge type={record.mismatchType} />
                 </div>
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span>
-                    作業員申告:{' '}
-                    <span className="font-medium text-foreground">
-                      {record.workerTotalHours.toFixed(1)}h
-                    </span>
-                  </span>
-                  {record.supervisorWorkerCount != null && (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex gap-4 text-xs text-muted-foreground">
                     <span>
-                      現場人数:{' '}
+                      作業員申告:{' '}
                       <span className="font-medium text-foreground">
-                        {record.supervisorWorkerCount}名
+                        {record.workerTotalHours.toFixed(1)}h
                       </span>
                     </span>
+                    {record.supervisorWorkerCount != null && (
+                      <span>
+                        現場人数:{' '}
+                        <span className="font-medium text-foreground">
+                          {record.supervisorWorkerCount}名
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  {record.reportId && (
+                    <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-7">
+                      <Link href={`/reports/${record.reportId}`}>
+                        <ClipboardCheck className="h-3 w-3 mr-1" />
+                        日報を確認
+                      </Link>
+                    </Button>
                   )}
                 </div>
               </CardContent>

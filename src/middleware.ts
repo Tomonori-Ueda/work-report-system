@@ -41,9 +41,14 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/report/history', request.url));
     }
 
+    // 現場監督（G）は /reports/[id] 個別詳細ページのみアクセス許可（確認操作のため）
+    // /reports 一覧・/reports/mismatch 等はブロック
+    const isSupervisorReportDetail =
+      isSupervisor && /^\/reports\/[^/]+$/.test(pathname);
+
     // 管理者エリアへの非管理者アクセスをブロック
     const adminPaths = ['/dashboard', '/reports', '/employees', '/salary', '/masters', '/leave-calendar'];
-    if (adminPaths.some((p) => pathname.startsWith(p)) && !isAdmin) {
+    if (adminPaths.some((p) => pathname.startsWith(p)) && !isAdmin && !isSupervisorReportDetail) {
       if (isSupervisor) return NextResponse.redirect(new URL('/field-report/history', request.url));
       return NextResponse.redirect(new URL('/report/history', request.url));
     }

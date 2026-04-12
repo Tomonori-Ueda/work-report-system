@@ -15,7 +15,7 @@ import {
 } from '@/lib/utils/api-response';
 import { createReportSchema } from '@/lib/validations/report';
 import { REPORT_STATUS } from '@/types/report';
-import { isAdminRole } from '@/types/user';
+import { isAdminRole, USER_ROLE } from '@/types/user';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -37,8 +37,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const data = doc.data()!;
 
-    // 管理者系ロール以外は自分の日報のみ閲覧可
-    if (!isAdminRole(auth.role) && data.userId !== auth.uid) {
+    // 管理者系ロールまたは現場監督（G）は全員の日報を閲覧可（確認操作のため）
+    // 一般作業員は自分の日報のみ閲覧可
+    const canReadAny = isAdminRole(auth.role) || auth.role === USER_ROLE.G;
+    if (!canReadAny && data.userId !== auth.uid) {
       return forbiddenResponse();
     }
 
