@@ -38,13 +38,20 @@ const NAV_ITEMS: NavItem[] = [
     href: '/reports/mismatch',
     label: '照合チェック',
     icon: '⚠️',
-    // S/A/A_special/B 全員（管理者系ロールに加え現場監督Gも対象だがここでは管理者画面のため管理者全員）
+    // S/A/A_special/B 全員
   },
   {
     href: '/salary',
     label: '勤怠集計・給与',
     icon: '💴',
-    // S/A/A_special/B 全員（管理者系）
+    // S/A/A_special/B 全員
+  },
+  {
+    href: '/leaves',
+    label: '休暇管理',
+    icon: '🏖',
+    // S/A/A_special のみ
+    allowedRoles: [USER_ROLE.S, USER_ROLE.A, USER_ROLE.A_SPECIAL],
   },
   {
     href: '/masters',

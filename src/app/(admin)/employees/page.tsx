@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Pencil } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -30,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getIdToken } from '@/lib/firebase/auth';
 import { queryKeys } from '@/lib/query/keys';
+import { toast } from 'sonner';
 import type { ApiSuccessResponse } from '@/types/api';
 import type { User, UserRole } from '@/types/user';
 import { USER_ROLE } from '@/types/user';
@@ -61,7 +63,7 @@ function getRoleBadgeClass(role: UserRole): string {
     default:
       return 'bg-gray-100 text-gray-700 border-gray-200';
   }
-};
+}
 
 /** 編集フォームの状態型 */
 interface EditFormState {
@@ -97,7 +99,7 @@ const DEFAULT_CREATE_FORM: CreateFormState = {
   annualLeaveBalance: '0',
 };
 
-/** S008: 従業員管理画面 */
+/** 従業員管理画面 */
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [editTarget, setEditTarget] = useState<User | null>(null);
@@ -158,6 +160,7 @@ export default function EmployeesPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      toast.success('従業員情報を更新しました');
       setEditTarget(null);
       setForm(null);
       setFormError(null);
@@ -195,6 +198,7 @@ export default function EmployeesPage() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      toast.success('従業員を登録しました');
       setShowCreateDialog(false);
       setCreateForm(DEFAULT_CREATE_FORM);
       setCreateError(null);
@@ -360,6 +364,7 @@ export default function EmployeesPage() {
                       size="sm"
                       onClick={() => openEditDialog(user)}
                     >
+                      <Pencil className="h-3 w-3 mr-1" />
                       編集
                     </Button>
                   </TableCell>

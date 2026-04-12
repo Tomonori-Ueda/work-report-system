@@ -28,6 +28,20 @@ export const REPORT_STATUS = {
 
 export type ReportStatus = (typeof REPORT_STATUS)[keyof typeof REPORT_STATUS];
 
+/** 時間帯別作業エントリ */
+export interface WorkEntry {
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
+  content: string;
+}
+
+/** 承認情報 */
+export interface ApprovalRecord {
+  uid: string;
+  displayName: string;
+  approvedAt: Timestamp | null;
+}
+
 /** 日報ドキュメント型 */
 export interface DailyReport {
   id: string;
@@ -40,6 +54,8 @@ export interface DailyReport {
   startTime?: string;
   endTime?: string;
   workContent?: string;
+  /** 時間帯別の作業内容（後方互換） */
+  workEntries?: WorkEntry[];
   // 集計値
   totalRegularHours: number;
   totalOvertimeHours: number;
@@ -54,7 +70,10 @@ export interface DailyReport {
   /** チェックした施工部長UID */
   checkedBy: string | null;
   checkedAt: Timestamp | null;
+  /** 承認者UID */
   approvedBy: string | null;
+  /** 承認者名 */
+  approvedByName: string | null;
   approvedAt: Timestamp | null;
   rejectReason: string | null;
   createdAt: Timestamp;

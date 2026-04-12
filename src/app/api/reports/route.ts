@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
       checkedBy: null,
       checkedAt: null,
       approvedBy: null,
+      approvedByName: null,
       approvedAt: null,
       rejectReason: null,
       createdAt: FieldValue.serverTimestamp(),

@@ -1,7 +1,9 @@
 import 'server-only';
 
 import { type NextRequest } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase/admin';
+import { getAdminAuth } from '@/lib/firebase/admin';
 import { verifyAuth } from '@/lib/firebase/api-auth';
 import {
   successResponse,
@@ -82,6 +84,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return errorResponse('BAD_REQUEST', '表示名は空にできません', 400);
       }
       updateData['displayName'] = body.displayName.trim();
+
+      // Firebase Auth の表示名も更新
+      const adminAuth = getAdminAuth();
+      await adminAuth.updateUser(id, { displayName: body.displayName.trim() });
     }
 
     if (body.department !== undefined) {
@@ -94,6 +100,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return errorResponse('BAD_REQUEST', '無効なロールです', 400);
       }
       updateData['role'] = body.role as UserRole;
+
+      // カスタムクレームのロールも更新
+      const adminAuth = getAdminAuth();
+      await adminAuth.setCustomUserClaims(id, { role: body.role });
     }
 
     if (body.hireDate !== undefined) {
@@ -121,6 +131,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (body.isActive !== undefined) {
       updateData['isActive'] = body.isActive;
     }
+
+    // updatedAtはFirestore ServerTimestampで上書き
+    updateData['updatedAt'] = FieldValue.serverTimestamp();
 
     await docRef.update(updateData);
 

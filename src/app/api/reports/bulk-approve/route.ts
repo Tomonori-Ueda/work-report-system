@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
     let approvedCount = 0;
     const failedIds: string[] = [];
 
+    // 承認者名を取得
+    const adminDoc = await db.collection('users').doc(auth.uid).get();
+    const adminName = (adminDoc.data()?.displayName as string) ?? '不明';
+
     // バッチ処理（500件ずつ）
     for (let i = 0; i < reportIds.length; i += BATCH_LIMIT) {
       const chunk = reportIds.slice(i, i + BATCH_LIMIT);
@@ -80,6 +84,7 @@ export async function POST(request: NextRequest) {
         batch.update(docRef, {
           status: REPORT_STATUS.APPROVED,
           approvedBy: auth.uid,
+          approvedByName: adminName,
           approvedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });

@@ -61,6 +61,9 @@ function createDefaultTimeBlock(): CreateReportFormValues['timeBlocks'][number] 
   };
 }
 
+/** 作業エントリの初期値 */
+const DEFAULT_WORK_ENTRY = { startTime: '', endTime: '', content: '' };
+
 interface ReportFormProps {
   /** 編集時のデフォルト値 */
   defaultValues?: Partial<{
@@ -178,7 +181,6 @@ export function ReportForm({ defaultValues, reportId }: ReportFormProps) {
 
     try {
       if (reportId) {
-        // 更新
         const res = await fetch(`/api/reports/${reportId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

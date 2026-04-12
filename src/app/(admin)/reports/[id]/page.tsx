@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/features/report/status-badge';
 import { WorkHoursDisplay } from '@/components/features/report/work-hours-display';
+import { WorkEntriesDisplay } from '@/components/features/report/work-entries-display';
+import { ApprovedByDisplay } from '@/components/features/report/approved-by-display';
 import { ApprovalActions } from '@/components/features/report/approval-actions';
 import { useReport } from '@/hooks/use-reports';
 import { useAuthStore } from '@/stores/auth-store';

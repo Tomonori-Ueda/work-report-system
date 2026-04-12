@@ -61,6 +61,11 @@ export interface LeaveRequest {
   createdAt: Timestamp;
 }
 
+/** 有給休暇申請（ユーザー名付き） */
+export interface LeaveRequestWithUser extends LeaveRequest {
+  userName: string;
+}
+
 /** 有給残日数履歴ドキュメント型 */
 export interface LeaveBalanceLog {
   id: string;

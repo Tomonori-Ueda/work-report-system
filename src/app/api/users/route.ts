@@ -41,6 +41,31 @@ const createUserSchema = z.object({
   annualLeaveBalance: z.number().int().nonnegative().default(0),
 });
 
+/** GET /api/users - ユーザー一覧を取得（管理者のみ） */
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await verifyAuth(request);
+    if (!auth) return unauthorizedResponse();
+    if (!isAdminRole(auth.role)) return forbiddenResponse();
+
+    const db = getAdminDb();
+    const snapshot = await db
+      .collection('users')
+      .orderBy('displayName')
+      .get();
+
+    const users = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return successResponse(users);
+  } catch (error) {
+    console.error('ユーザー一覧取得エラー:', error);
+    return serverErrorResponse();
+  }
+}
+
 /** POST /api/users - 新規ユーザー登録（管理者のみ） */
 export async function POST(request: NextRequest) {
   try {
@@ -114,31 +139,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('ユーザー作成エラー:', error);
-    return serverErrorResponse();
-  }
-}
-
-/** GET /api/users - ユーザー一覧を取得（管理者のみ） */
-export async function GET(request: NextRequest) {
-  try {
-    const auth = await verifyAuth(request);
-    if (!auth) return unauthorizedResponse();
-    if (!isAdminRole(auth.role)) return forbiddenResponse();
-
-    const db = getAdminDb();
-    const snapshot = await db
-      .collection('users')
-      .orderBy('displayName')
-      .get();
-
-    const users = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    return successResponse(users);
-  } catch (error) {
-    console.error('ユーザー一覧取得エラー:', error);
     return serverErrorResponse();
   }
 }
