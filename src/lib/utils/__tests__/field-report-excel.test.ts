@@ -1,6 +1,8 @@
 /**
  * @jest-environment node
  */
+import { writeFileSync } from 'node:fs';
+import ExcelJS from 'exceljs';
 import { Timestamp } from 'firebase/firestore';
 import {
   generateFieldReportExcel,
@@ -145,5 +147,85 @@ describe('generateFieldReportExcel', () => {
     const r = buildMinimalReport({ subcontractorWorks: [] });
     const buf = await generateFieldReportExcel(r, '監督');
     expect(buf.length).toBeGreaterThan(2000);
+  });
+
+  it('様式7.5-9-02 の主要ラベル・職種ラベルがすべてシート内に含まれる', async () => {
+    const r = buildMinimalReport({
+      projectName: '(軽井沢)小峯様別荘新築工事',
+      siteResponsible: '小林 紀之',
+      supervisorWorkStart: '08:00',
+      supervisorWorkEnd: '20:30',
+      tradeWorkers: {
+        tobi: { today: 0, cumulative: 19 },
+        zosaku: { today: 4, cumulative: 183 },
+        shokuin: { today: 1, cumulative: 235 },
+      },
+    });
+    const buf = await generateFieldReportExcel(r, '小林 紀之');
+
+    // ローカル目視用に書き出す（CI 等で書けない場合は無視）
+    try {
+      writeFileSync('/tmp/preview-field-report.xlsx', buf);
+    } catch {
+      // ignore: Read-only環境では何もしない
+    }
+
+    // 出力したバッファを読み戻してセル値を検証
+    const wb = new ExcelJS.Workbook();
+    // ExcelJS の型が古い Buffer 型を期待するため as unknown キャスト
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet('打合せ指示書・日誌');
+    expect(ws).toBeDefined();
+
+    // 全セル値を1つの文字列に集約してラベル含有を検証
+    const collected: string[] = [];
+    ws!.eachRow({ includeEmpty: false }, (rowObj) => {
+      rowObj.eachCell({ includeEmpty: false }, (cell) => {
+        const v = cell.value;
+        if (v !== null && v !== undefined) collected.push(String(v));
+      });
+    });
+    // 縦書き表示用の改行を除去して比較
+    const flat = collected.join('|').replace(/\n/g, '');
+
+    // ヘッダ系
+    expect(flat).toContain('打合せ指示書・日誌');
+    expect(flat).toContain('7.5-9-02');
+    expect(flat).toContain('回覧');
+    expect(flat).toContain('社長');
+    expect(flat).toContain('専務');
+    // 基本情報
+    expect(flat).toContain('日付');
+    expect(flat).toContain('天候');
+    expect(flat).toContain('工事名');
+    expect(flat).toContain('現場責任者');
+    expect(flat).toContain('(軽井沢)小峯様別荘新築工事');
+    expect(flat).toContain('小林 紀之');
+    // セクションラベル
+    expect(flat).toContain('受入先（外注工事含む）');
+    expect(flat).toContain('協力会社');
+    expect(flat).toContain('安全指示事項');
+    expect(flat).toContain('工種');
+    expect(flat).toContain('指摘・是正事項');
+    expect(flat).toContain('持ち出し品');
+    expect(flat).toContain('打合せ');
+    expect(flat).toContain('使用機器');
+    expect(flat).toContain('機械名');
+    expect(flat).toContain('運転者名');
+    expect(flat).toContain('個人勤務');
+    expect(flat).toContain('稼動人員');
+    // 職種27種
+    const tradeLabels = [
+      '鳶工', '土工', '圧送工', '鉄筋工', '型枠工', '鉄工', '外壁工',
+      '防水工', '石・タイル工', '造作大工', '屋根板金工', '金属工',
+      '左官工', '家具木建工', '鋼製建具工', 'ガラス工', '塗装工',
+      '内装工', '昇降機工', '電工', '設備工', '地盤改良工', '直営',
+      'その他', 'クレーン', '解体工', '職員',
+    ];
+    for (const label of tradeLabels) {
+      expect(flat).toContain(label);
+    }
+    // 注釈
+    expect(flat).toContain('記入項目のない箇所は該当なし');
   });
 });

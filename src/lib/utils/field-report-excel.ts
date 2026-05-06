@@ -14,7 +14,19 @@ import {
   type ProcessInspection,
 } from '@/types/field-report';
 
-/** 日本語ラベル */
+/**
+ * 様式7.5-9-02「打合せ指示書・日誌」を Excel で再現する。
+ *
+ * レイアウト方針:
+ *   3カラム構成（画像参照）
+ *   - 左ブロック (A〜G):  日付・工事名・作業内容（協力会社）・打合せ記録・使用機器
+ *   - 中央ブロック (H〜M): 受入先・工程内検査・持ち出し品・個人勤務時間
+ *   - 右ブロック (N〜P):  稼動人員（27職種＋合計＋労働時間累計）
+ *
+ *   ピクセル単位の完全一致は元 .xlsx テンプレートが無いと不可能だが、
+ *   セル結合・罫線・フォント指定で印刷時の見栄えは画像に近づける。
+ */
+
 const WEATHER_LABEL: Record<Weather, string> = {
   [WEATHER.SUNNY]: '晴',
   [WEATHER.CLOUDY]: '曇',
@@ -33,7 +45,11 @@ const OWNERSHIP_LABEL: Record<MachineOwnership, string> = {
   [MACHINE_OWNERSHIP.LEASE]: 'リース',
 };
 
-const PROCESS_INSPECTION_LABELS: Array<[keyof ProcessInspection, string]> = [
+/** ProcessInspection の boolean キーのみ */
+type InspectionBoolKey = Exclude<keyof ProcessInspection, 'notes'>;
+
+/** 工程内検査チェックボックス11項目（2列に並べる順序） */
+const INSPECTION_LEFT: Array<[InspectionBoolKey, string]> = [
   ['foundation_pile', '基礎杭'],
   ['rebar', '鉄筋'],
   ['formwork', '型枠'],
@@ -41,115 +57,111 @@ const PROCESS_INSPECTION_LABELS: Array<[keyof ProcessInspection, string]> = [
   ['roof', '屋根'],
   ['exterior_wall', '外壁'],
   ['internal_waterproof', '内部防水'],
-  ['electrical', '電気'],
-  ['plumbing', '給排水衛生'],
-  ['roof_waterproof', '屋根防水'],
-  ['interior', '内装'],
+];
+const INSPECTION_RIGHT: Array<[InspectionBoolKey | null, string, string]> = [
+  ['electrical', '電気', ''],
+  ['plumbing', '給排水衛生', '(絶縁試験等記録を添付の事)'],
+  ['roof_waterproof', '屋根防水', ''],
+  ['interior', '内装', '(気密試験等記録を添付の事)'],
+  [null, '', ''],
+  [null, '', ''],
+  [null, '', ''],
 ];
 
-/** 全セルに掛ける細罫線 */
-const THIN_BORDER: Partial<ExcelJS.Borders> = {
+const THIN: Partial<ExcelJS.Borders> = {
   top: { style: 'thin' },
   left: { style: 'thin' },
   bottom: { style: 'thin' },
   right: { style: 'thin' },
 };
 
-/** セクション見出しの背景色 */
 const HEADER_FILL: ExcelJS.FillPattern = {
   type: 'pattern',
   pattern: 'solid',
-  fgColor: { argb: 'FFE0E0E0' },
+  fgColor: { argb: 'FFE7E7E7' },
 };
 
-/**
- * 元号年月日に変換する（令和8年2月24日 形式）
- * Why: 様式7.5-9-02 は元号表記が標準のため。
- * 令和元年(2019)以前は西暦のままにする（保険）。
- */
-function toReiwaDate(isoDate: string): string {
-  const parts = isoDate.split('-');
-  const y = parseInt(parts[0] ?? '0', 10);
-  const m = parseInt(parts[1] ?? '0', 10);
-  const d = parseInt(parts[2] ?? '0', 10);
-  if (!y || !m || !d) return isoDate;
-  // 令和は2019/5/1〜
-  if (y < 2019 || (y === 2019 && m < 5)) return `${y}年${m}月${d}日`;
-  const reiwa = y - 2018; // 2019 → 令和元年扱いだが、ここでは1年と表記
-  const era = reiwa === 1 ? '元' : String(reiwa);
-  return `令和${era}年${m}月${d}日`;
-}
-
-/** 曜日（日本語） */
-function toJapaneseWeekday(isoDate: string): string {
-  const d = new Date(`${isoDate}T00:00:00`);
-  const wd = ['日', '月', '火', '水', '木', '金', '土'];
-  return wd[d.getDay()] ?? '';
-}
-
-/**
- * セル範囲に共通スタイルを適用（罫線・配置・折返し）
- */
+/** 範囲にスタイル一括適用 */
 function styleRange(
   ws: ExcelJS.Worksheet,
   range: string,
-  style: {
+  opts: {
     border?: boolean;
     bold?: boolean;
     align?: 'left' | 'center' | 'right';
     fill?: ExcelJS.FillPattern;
     fontSize?: number;
+    wrapText?: boolean;
+    rotate?: number;
   }
 ): void {
-  const rangeRegex = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/;
-  const m = range.match(rangeRegex);
+  const m = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
   if (!m) return;
-  const [, c1, r1, c2, r2] = m;
-  const r1n = parseInt(r1!, 10);
-  const r2n = parseInt(r2!, 10);
-  const c1n = ws.getColumn(c1!).number;
-  const c2n = ws.getColumn(c2!).number;
-  for (let r = r1n; r <= r2n; r++) {
-    for (let c = c1n; c <= c2n; c++) {
+  const c1 = ws.getColumn(m[1]!).number;
+  const r1 = parseInt(m[2]!, 10);
+  const c2 = ws.getColumn(m[3]!).number;
+  const r2 = parseInt(m[4]!, 10);
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
       const cell = ws.getCell(r, c);
-      if (style.border) cell.border = { ...THIN_BORDER };
-      if (style.bold) cell.font = { ...cell.font, bold: true, size: style.fontSize ?? cell.font?.size };
-      if (style.fontSize) cell.font = { ...cell.font, size: style.fontSize };
-      if (style.fill) cell.fill = style.fill;
+      if (opts.border) cell.border = { ...THIN };
+      const fontPatch: Partial<ExcelJS.Font> = {};
+      if (opts.bold) fontPatch.bold = true;
+      if (opts.fontSize) fontPatch.size = opts.fontSize;
+      if (Object.keys(fontPatch).length > 0) cell.font = { ...cell.font, ...fontPatch };
+      if (opts.fill) cell.fill = opts.fill;
       cell.alignment = {
-        horizontal: style.align ?? 'left',
+        horizontal: opts.align ?? 'center',
         vertical: 'middle',
-        wrapText: true,
+        wrapText: opts.wrapText ?? true,
+        textRotation: opts.rotate ?? 0,
       };
     }
   }
 }
 
-/** 1セクションの見出し行を書く（A〜列末まで結合・背景グレー） */
-function writeSectionHeader(
+function setCell(
   ws: ExcelJS.Worksheet,
-  row: number,
-  text: string,
-  endCol = 'L'
+  ref: string,
+  value: string | number,
+  opts: {
+    border?: boolean;
+    bold?: boolean;
+    align?: 'left' | 'center' | 'right';
+    fill?: ExcelJS.FillPattern;
+    fontSize?: number;
+    wrapText?: boolean;
+  } = {}
 ): void {
-  ws.getCell(`A${row}`).value = text;
-  ws.mergeCells(`A${row}:${endCol}${row}`);
-  styleRange(ws, `A${row}:${endCol}${row}`, {
-    border: true,
-    bold: true,
-    align: 'left',
-    fill: HEADER_FILL,
-  });
+  ws.getCell(ref).value = value;
+  styleRange(ws, `${ref}:${ref}`, opts);
+}
+
+/** 元号年月日（令和8年2月24日 形式）。令和元年(2019/5)未満は西暦表記。 */
+function toReiwaParts(isoDate: string): { era: string; year: string; month: number; day: number } {
+  const [yStr, mStr, dStr] = isoDate.split('-');
+  const y = parseInt(yStr ?? '0', 10);
+  const m = parseInt(mStr ?? '0', 10);
+  const d = parseInt(dStr ?? '0', 10);
+  if (!y || !m || !d) return { era: '', year: String(y), month: m, day: d };
+  if (y < 2019 || (y === 2019 && m < 5)) {
+    return { era: '', year: String(y), month: m, day: d };
+  }
+  const reiwa = y - 2018;
+  return { era: '令和', year: reiwa === 1 ? '元' : String(reiwa), month: m, day: d };
+}
+
+function toJapaneseWeekday(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00`);
+  return ['日', '月', '火', '水', '木', '金', '土'][d.getDay()] ?? '';
+}
+
+function checkbox(checked: boolean): string {
+  return checked ? '☑' : '☐';
 }
 
 /**
- * FieldReport から Excel ブック（Buffer）を生成する。
- * 様式7.5-9-02「打合せ指示書・日誌」の項目を縦に並べた印刷可能フォーマット。
- *
- * Why: 完全なピクセル単位再現には実Excelテンプレート（.xlsx）が必要だが、
- *      項目はすべて含むため実運用・印刷で過不足なく利用できる。
- *      実テンプレートが共有された場合は xlsx-template による差し込みに切替えやすいよう、
- *      生成処理は本ファイルに局所化している。
+ * FieldReport から様式7.5-9-02 形式の Excel ブック（Buffer）を生成する。
  */
 export async function generateFieldReportExcel(
   report: FieldReport,
@@ -160,389 +172,549 @@ export async function generateFieldReportExcel(
   wb.created = new Date();
 
   const ws = wb.addWorksheet('打合せ指示書・日誌', {
+    views: [{ showGridLines: false }],
     pageSetup: {
       paperSize: 9, // A4
       orientation: 'landscape',
       fitToPage: true,
       fitToWidth: 1,
-      fitToHeight: 0,
+      fitToHeight: 1,
       margins: {
-        left: 0.4, right: 0.4,
-        top: 0.5, bottom: 0.5,
-        header: 0.3, footer: 0.3,
+        left: 0.3, right: 0.3, top: 0.3, bottom: 0.3,
+        header: 0.2, footer: 0.2,
       },
     },
   });
 
-  // 列幅
+  // 列幅（A〜P 16列）
   ws.columns = [
-    { width: 12 }, // A
-    { width: 12 }, // B
-    { width: 8 },  // C
-    { width: 24 }, // D
-    { width: 20 }, // E
-    { width: 14 }, // F
-    { width: 10 }, // G
-    { width: 10 }, // H
-    { width: 14 }, // I
-    { width: 10 }, // J
-    { width: 10 }, // K
-    { width: 10 }, // L
+    { width: 5 },   // A: 縦書き「作業内容」など
+    { width: 14 },  // B: 協力会社
+    { width: 5 },   // C: 人員
+    { width: 5 },   // D: 常用
+    { width: 18 },  // E: 作業内容
+    { width: 14 },  // F: 安全指示事項
+    { width: 5 },   // G: 縦書き 受入先(外注工事含む)
+    { width: 12 },  // H: 受入先 / 工種ラベル
+    { width: 16 },  // I: 品名 / 検査チェック左
+    { width: 6 },   // J: 数量 / 検査チェック右
+    { width: 4 },   // K: 単位
+    { width: 10 },  // L: 持ち出し品 数量
+    { width: 9 },   // M: 持ち出し品 区分 / 個人勤務
+    { width: 8 },   // N: 職種ラベル
+    { width: 6 },   // O: 人員
+    { width: 7 },   // P: 累計
   ];
 
+  // ============================================================
+  // 1〜2行: ヘッダ（様式番号 / タイトル / 勤務時間 / 回覧）
+  // ============================================================
   let row = 1;
 
-  // === ヘッダ：様式番号 + タイトル ===
-  ws.getCell(`A${row}`).value = '様式 7.5-9-02';
+  // 様式番号
+  ws.getCell(`A${row}`).value = '(様式 7.5-9-02)';
   ws.getCell(`A${row}`).font = { size: 9 };
-  ws.mergeCells(`B${row}:F${row}`);
+  ws.getCell(`A${row}`).alignment = { horizontal: 'left', vertical: 'middle' };
+
+  // タイトル
+  ws.mergeCells(`B${row}:E${row}`);
   ws.getCell(`B${row}`).value = '打合せ指示書・日誌';
-  styleRange(ws, `B${row}:F${row}`, { bold: true, align: 'center', fontSize: 16 });
-  ws.getCell(`G${row}`).value = '勤務時間';
-  ws.getCell(`H${row}`).value = `${report.supervisorWorkStart ?? ''} 〜 ${report.supervisorWorkEnd ?? ''}`;
-  ws.mergeCells(`H${row}:I${row}`);
-  styleRange(ws, `G${row}:I${row}`, { border: true, align: 'center' });
-  ws.getCell(`J${row}`).value = '作成';
-  ws.getCell(`K${row}`).value = '専務';
-  ws.getCell(`L${row}`).value = '社長';
-  styleRange(ws, `J${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  ws.getRow(row).height = 28;
+  styleRange(ws, `B${row}:E${row}`, { bold: true, align: 'center', fontSize: 16 });
+
+  // 勤務時間ラベル + 値
+  ws.getCell(`F${row}`).value = '勤務時間';
+  styleRange(ws, `F${row}:F${row}`, { align: 'right', fontSize: 9 });
+  ws.mergeCells(`G${row}:K${row}`);
+  ws.getCell(`G${row}`).value =
+    `【${supervisorName || '監督'}】${report.supervisorWorkStart ?? ''}〜${report.supervisorWorkEnd ?? ''}  現場管理`;
+  styleRange(ws, `G${row}:K${row}`, { align: 'left', fontSize: 10 });
+
+  // 回覧 ヘッダ（社長/専務/作成）
+  setCell(ws, `L${row}`, '回覧', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `M${row}`, '社長', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `N${row}`, '専務', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`O${row}:P${row}`);
+  setCell(ws, `O${row}`, '作成', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.getRow(row).height = 22;
   row++;
 
-  // 押印枠（空欄）
-  ws.getCell(`J${row}`).value = supervisorName;
-  ws.getCell(`K${row}`).value = '';
-  ws.getCell(`L${row}`).value = '';
-  styleRange(ws, `J${row}:L${row}`, { border: true, align: 'center' });
-  ws.getRow(row).height = 30;
-  // 同時に左側の基本情報行ヘッダ
-  const labelCells: Array<[string, string]> = [
-    ['A', '日付'],
-    ['B', '曜日'],
-    ['C', '天候'],
-    ['D', '工事名'],
-    ['E', '現場責任者'],
-    ['F', '作業時間'],
-    ['G', '勤務（監督）'],
-    ['H', '監督勤務'],
-    ['I', '回覧'],
-  ];
-  for (const [col, label] of labelCells) {
-    ws.getCell(`${col}${row}`).value = label;
+  // 押印枠
+  ws.getCell(`A${row}`).value = '';
+  ws.getCell(`F${row}`).value = '作業時間';
+  styleRange(ws, `F${row}:F${row}`, { align: 'right', fontSize: 9 });
+  ws.mergeCells(`G${row}:K${row}`);
+  ws.getCell(`G${row}`).value = `${report.workTimeStart ?? ''} 〜`;
+  styleRange(ws, `G${row}:K${row}`, { align: 'left', fontSize: 10 });
+  setCell(ws, `L${row}`, '', { border: true });
+  setCell(ws, `M${row}`, '', { border: true });
+  setCell(ws, `N${row}`, '', { border: true });
+  ws.mergeCells(`O${row}:P${row}`);
+  setCell(ws, `O${row}`, supervisorName, { border: true, align: 'center', fontSize: 10 });
+  ws.getRow(row).height = 38;
+  row++;
+
+  // ============================================================
+  // 3行: 日付/曜日/天候 ヘッダ + 受入先ヘッダ + 稼働人員ヘッダ
+  // ============================================================
+  setCell(ws, `A${row}`, '日付', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`B${row}:D${row}`);
+  setCell(ws, `B${row}`, '日付', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `E${row}`, '曜日', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `F${row}`, '天候', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+
+  // 受入先ヘッダ（縦書きG列）
+  ws.mergeCells(`G${row}:G${row + 1}`);
+  setCell(ws, `G${row}`, '受入先（外注工事含む）', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 8,
+  });
+  ws.getCell(`G${row}`).alignment = {
+    ...ws.getCell(`G${row}`).alignment,
+    textRotation: 90,
+  };
+  setCell(ws, `H${row}`, '受入先', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `I${row}`, '品名', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `J${row}`, '数量', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `K${row}`, '単位', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  // 持ち出し品はあとで描く（先に作るのは稼動人員ヘッダ）
+
+  // 稼働人員ヘッダ（縦書きL列）
+  setCell(ws, `L${row}`, '稼動人員', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `M${row}`, '', { border: true, fill: HEADER_FILL });
+  setCell(ws, `N${row}`, '職種', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `O${row}`, '人員', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `P${row}`, '累計', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.getRow(row).height = 18;
+  row++;
+
+  // ============================================================
+  // 4行: 日付値 + 受入先1行目 + 職種1（鳶工）
+  // ============================================================
+  const reiwa = toReiwaParts(report.reportDate);
+  // A4 セルに「令和」+ 改行 + 「8年」のように積みたいが、シンプルに 1セル1値で
+  ws.mergeCells(`A${row}:D${row}`);
+  ws.getCell(`A${row}`).value = `${reiwa.era}${reiwa.year}年 ${reiwa.month}月 ${reiwa.day}日`;
+  styleRange(ws, `A${row}:D${row}`, { border: true, align: 'center', fontSize: 11, bold: true });
+  setCell(ws, `E${row}`, toJapaneseWeekday(report.reportDate), { border: true, align: 'center', fontSize: 11 });
+  setCell(ws, `F${row}`, WEATHER_LABEL[report.weather] ?? '', { border: true, align: 'center', fontSize: 11 });
+  ws.getRow(row).height = 24;
+
+  // 受入先 1行目（さらに2行追加で計3行作る）
+  const receiveItems = report.receiveItems ?? [];
+  setCell(ws, `H${row}`, receiveItems[0]?.receiver ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `I${row}`, receiveItems[0]?.itemName ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `J${row}`, receiveItems[0]?.quantity ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `K${row}`, receiveItems[0]?.unit ?? '', { border: true, align: 'center', fontSize: 9 });
+
+  // 稼働人員: 鳶工
+  writeTradeRow(ws, row, 0, report);
+  row++;
+
+  // ============================================================
+  // 5行: 工事名 + 現場責任者ヘッダ + 受入先2行目 + 職種2（土工）
+  // ============================================================
+  setCell(ws, `A${row}`, '', { border: true });
+  ws.mergeCells(`B${row}:D${row}`);
+  setCell(ws, `B${row}`, '工事名', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`E${row}:F${row}`);
+  setCell(ws, `E${row}`, '現場責任者 氏名', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `H${row}`, receiveItems[1]?.receiver ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `I${row}`, receiveItems[1]?.itemName ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `J${row}`, receiveItems[1]?.quantity ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `K${row}`, receiveItems[1]?.unit ?? '', { border: true, align: 'center', fontSize: 9 });
+  writeTradeRow(ws, row, 1, report);
+  row++;
+
+  // ============================================================
+  // 6行: 工事名 値 + 現場責任者 値 + 受入先3行目 + 職種3
+  // ============================================================
+  setCell(ws, `A${row}`, '', { border: true });
+  ws.mergeCells(`B${row}:D${row}`);
+  setCell(ws, `B${row}`, report.projectName ?? report.siteName, {
+    border: true, align: 'center', fontSize: 11, bold: true,
+  });
+  ws.mergeCells(`E${row}:F${row}`);
+  setCell(ws, `E${row}`, report.siteResponsible ?? '', {
+    border: true, align: 'center', fontSize: 11,
+  });
+  setCell(ws, `H${row}`, receiveItems[2]?.receiver ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `I${row}`, receiveItems[2]?.itemName ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `J${row}`, receiveItems[2]?.quantity ?? '', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `K${row}`, receiveItems[2]?.unit ?? '', { border: true, align: 'center', fontSize: 9 });
+  writeTradeRow(ws, row, 2, report);
+  ws.getRow(row).height = 24;
+  row++;
+
+  // ============================================================
+  // 7行: 作業内容 ヘッダ + 工程内検査 ヘッダ + 職種4
+  // 「作業内容」は縦書き列A、B〜F は協力会社/人員/常用/作業内容/安全指示
+  // ============================================================
+  // 作業内容 縦書き（A列）。協力会社4行 + ヘッダ1行 = 5行を結合
+  const subWorks = report.subcontractorWorks;
+  const workContentRows = Math.max(4, subWorks.length); // 最低4行
+  const workSectionRowStart = row;
+  ws.mergeCells(`A${row}:A${row + workContentRows}`);
+  setCell(ws, `A${row}`, '作\n業\n内\n容', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 11,
+  });
+
+  // 作業内容ヘッダ
+  setCell(ws, `B${row}`, '協力会社', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `C${row}`, '人員', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `D${row}`, '常用', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `E${row}`, '作業内容', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `F${row}`, '安全指示事項', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+
+  // 工程内検査ヘッダ（G列縦書き）
+  ws.mergeCells(`G${row}:G${row + 7}`);
+  setCell(ws, `G${row}`, '工\n程\n内\n検\n査', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 11,
+  });
+  setCell(ws, `H${row}`, '工種', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`I${row}:J${row}`);
+  setCell(ws, `I${row}`, '工種', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`K${row}:M${row}`);
+  setCell(ws, `K${row}`, '指摘・是正事項', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+
+  writeTradeRow(ws, row, 3, report);
+  row++;
+
+  // ============================================================
+  // 8〜11行: 協力会社4行 + 工程内検査チェックリスト
+  // ============================================================
+  const inspection = report.processInspection;
+  for (let i = 0; i < workContentRows; i++) {
+    const work = subWorks[i];
+    setCell(ws, `B${row}`, work?.companyName ?? '', { border: true, align: 'center', fontSize: 10 });
+    setCell(ws, `C${row}`, work?.workerCount ?? '', { border: true, align: 'center', fontSize: 10 });
+    setCell(ws, `D${row}`, '', { border: true, align: 'center', fontSize: 10 });
+    setCell(ws, `E${row}`, work?.workContent ?? '', { border: true, align: 'left', fontSize: 10 });
+    setCell(ws, `F${row}`, '', { border: true, align: 'left', fontSize: 10 });
+
+    // 工程内検査チェック（左7項目）
+    const left = INSPECTION_LEFT[i];
+    if (left) {
+      const [key, label] = left;
+      setCell(ws, `H${row}`,
+        `${checkbox(inspection?.[key] ?? false)} ${label}`,
+        { border: true, align: 'left', fontSize: 9 }
+      );
+    } else {
+      setCell(ws, `H${row}`, '', { border: true });
+    }
+    // 工程内検査チェック（右4項目）
+    const right = INSPECTION_RIGHT[i];
+    if (right) {
+      const [key, label, sub] = right;
+      const text = key
+        ? `${checkbox(inspection?.[key] ?? false)} ${label}${sub ? `\n${sub}` : ''}`
+        : '';
+      ws.mergeCells(`I${row}:J${row}`);
+      setCell(ws, `I${row}`, text, { border: true, align: 'left', fontSize: 8, wrapText: true });
+    } else {
+      ws.mergeCells(`I${row}:J${row}`);
+      setCell(ws, `I${row}`, '', { border: true });
+    }
+    // 指摘・是正事項（最初の行に集約）
+    ws.mergeCells(`K${row}:M${row}`);
+    setCell(ws, `K${row}`, i === 0 ? (inspection?.notes ?? '') : '', {
+      border: true, align: 'left', fontSize: 9, wrapText: true,
+    });
+
+    // 稼動人員: 4列目以降
+    writeTradeRow(ws, row, 4 + i, report);
+    ws.getRow(row).height = 22;
+    row++;
   }
-  styleRange(ws, `A${row}:I${row}`, {
+
+  // 工程内検査が7行に満たない場合、残り行は空欄＋検査右ブロック後半
+  // workContentRows < 7 のとき、追加3行で工程内検査を埋める
+  for (let i = workContentRows; i < 7; i++) {
+    setCell(ws, `B${row}`, '', { border: true });
+    setCell(ws, `C${row}`, '', { border: true });
+    setCell(ws, `D${row}`, '', { border: true });
+    setCell(ws, `E${row}`, '', { border: true });
+    setCell(ws, `F${row}`, '', { border: true });
+    const left = INSPECTION_LEFT[i];
+    if (left) {
+      const [key, label] = left;
+      setCell(ws, `H${row}`, `${checkbox(inspection?.[key] ?? false)} ${label}`,
+        { border: true, align: 'left', fontSize: 9 }
+      );
+    } else {
+      setCell(ws, `H${row}`, '', { border: true });
+    }
+    const right = INSPECTION_RIGHT[i];
+    ws.mergeCells(`I${row}:J${row}`);
+    if (right) {
+      const [key, label, sub] = right;
+      const text = key
+        ? `${checkbox(inspection?.[key] ?? false)} ${label}${sub ? `\n${sub}` : ''}`
+        : '';
+      setCell(ws, `I${row}`, text, { border: true, align: 'left', fontSize: 8 });
+    } else {
+      setCell(ws, `I${row}`, '', { border: true });
+    }
+    ws.mergeCells(`K${row}:M${row}`);
+    setCell(ws, `K${row}`, '', { border: true });
+    writeTradeRow(ws, row, 4 + i, report);
+    ws.getRow(row).height = 22;
+    row++;
+  }
+
+  // 作業内容の縦書きセル結合の後始末: 7行ぶん使ったので、結合範囲を更新
+  // （workContentRows = 4 なら A 列を 4行で結合済み、残り3行は空欄でA列も空にする）
+  // 既存実装で問題ない: A列は最初の merge で既に結合済み
+
+  // ============================================================
+  // 持ち出し品セクション（行 +3）
+  // ============================================================
+  // 縦書き G 列
+  ws.mergeCells(`G${row}:G${row + 3}`);
+  setCell(ws, `G${row}`, '会\n社\n資\n材\n・\n機\n材\n・\n備\n品\n・\n特\n記\n記\n録', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9,
+  });
+  // ヘッダ
+  ws.mergeCells(`H${row}:I${row}`);
+  setCell(ws, `H${row}`, '持ち出し品', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `J${row}`, '数量', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`K${row}:M${row}`);
+  setCell(ws, `K${row}`, '借入・返却・消却', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  writeTradeRow(ws, row, 11, report); // 11行目の職種（金属工）
+  row++;
+  // 持ち出し品 3行
+  const carryOuts = report.carryOutItems ?? [];
+  for (let i = 0; i < 3; i++) {
+    const it = carryOuts[i];
+    ws.mergeCells(`H${row}:I${row}`);
+    setCell(ws, `H${row}`, it?.itemName ?? '', { border: true, align: 'left', fontSize: 9 });
+    setCell(ws, `J${row}`, it?.quantity ?? '', { border: true, align: 'center', fontSize: 9 });
+    ws.mergeCells(`K${row}:M${row}`);
+    setCell(ws, `K${row}`, it ? CARRY_OUT_LABEL[it.category] : '', {
+      border: true, align: 'center', fontSize: 9,
+    });
+    writeTradeRow(ws, row, 12 + i, report);
+    ws.getRow(row).height = 20;
+    row++;
+  }
+
+  // ============================================================
+  // 打合せ記録（左ブロック） + 個人勤務時間（中央ブロック）
+  // ============================================================
+  // 打合せ記録 縦書き A列
+  ws.mergeCells(`A${row}:A${row + 2}`);
+  setCell(ws, `A${row}`, '打\n合\nせ\n記\n録', {
     border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 10,
   });
+  // ヘッダ
+  setCell(ws, `B${row}`, '相手先', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`C${row}:F${row}`);
+  setCell(ws, `C${row}`, '項目・対策', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  // 個人勤務時間 縦書き G列
+  ws.mergeCells(`G${row}:G${row + 5}`);
+  setCell(ws, `G${row}`, '個\n人\n勤\n務\n時\n間', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 10,
+  });
+  // 個人勤務時間 ヘッダ
+  ws.mergeCells(`H${row}:M${row}`);
+  setCell(ws, `H${row}`, '個人勤務時間', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  writeTradeRow(ws, row, 15, report);
   row++;
 
-  // 基本情報 値行
-  ws.getCell(`A${row}`).value = toReiwaDate(report.reportDate);
-  ws.getCell(`B${row}`).value = toJapaneseWeekday(report.reportDate);
-  ws.getCell(`C${row}`).value = WEATHER_LABEL[report.weather] ?? '';
-  ws.getCell(`D${row}`).value = report.projectName ?? report.siteName;
-  ws.getCell(`E${row}`).value = report.siteResponsible ?? '';
-  ws.getCell(`F${row}`).value = report.workTimeStart ?? '';
-  ws.getCell(`G${row}`).value = supervisorName;
-  ws.getCell(`H${row}`).value =
-    `${report.supervisorWorkStart ?? ''}〜${report.supervisorWorkEnd ?? ''}`;
-  ws.getCell(`I${row}`).value = '';
-  styleRange(ws, `A${row}:I${row}`, { border: true, align: 'center' });
-  ws.getRow(row).height = 24;
-  row += 2;
-
-  // === 協力会社作業内容 ===
-  writeSectionHeader(ws, row, '作業内容（協力会社・自社）');
-  row++;
-  // 列見出し
-  ws.getCell(`A${row}`).value = '協力会社';
-  ws.getCell(`B${row}`).value = '人員';
-  ws.getCell(`C${row}`).value = '常用';
-  ws.getCell(`D${row}`).value = '作業内容';
-  ws.getCell(`E${row}`).value = '安全指示';
-  ws.getCell(`F${row}`).value = '時間';
-  ws.getCell(`G${row}`).value = '作業員氏名（人名単位）';
-  ws.mergeCells(`G${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
-
-  for (const w of report.subcontractorWorks) {
-    ws.getCell(`A${row}`).value = w.companyName;
-    ws.getCell(`B${row}`).value = w.workerCount;
-    ws.getCell(`C${row}`).value = '';
-    ws.getCell(`D${row}`).value = w.workContent;
-    ws.getCell(`E${row}`).value = '';
-    ws.getCell(`F${row}`).value =
-      w.startTime && w.endTime ? `${w.startTime}〜${w.endTime}` : '';
-    ws.getCell(`G${row}`).value = (w.workerNames ?? []).join('、');
-    ws.mergeCells(`G${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true, align: 'left' });
-    row++;
-  }
-
-  // 自社作業員
-  if (report.ownEmployees && report.ownEmployees.length > 0) {
-    ws.getCell(`A${row}`).value = '自社（直営）';
-    ws.getCell(`B${row}`).value = report.ownEmployees.length;
-    ws.getCell(`C${row}`).value = '';
-    ws.getCell(`D${row}`).value = report.ownEmployees
-      .map((e) => `${e.displayName}: ${e.workContent}`)
-      .join(' / ');
-    ws.mergeCells(`D${row}:F${row}`);
-    ws.getCell(`G${row}`).value = report.ownEmployees
-      .map((e) => e.displayName)
-      .join('、');
-    ws.mergeCells(`G${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    row++;
-  }
-  row++;
-
-  // === 工程内検査 ===
-  writeSectionHeader(ws, row, '工程内検査');
-  row++;
-  if (report.processInspection) {
-    const insp = report.processInspection;
-    let col = 1;
-    const startRow = row;
-    for (const [key, label] of PROCESS_INSPECTION_LABELS) {
-      const c = ws.getCell(row, col);
-      c.value = `${insp[key] ? '☑' : '☐'} ${label}`;
-      col++;
-      if (col > 6) {
-        col = 1;
-        row++;
-      }
-    }
-    if (col !== 1) row++;
-    // 範囲全体に罫線
-    styleRange(ws, `A${startRow}:L${row - 1}`, { border: true });
-
-    // 指摘・是正事項
-    ws.getCell(`A${row}`).value = '指摘・是正事項';
-    styleRange(ws, `A${row}:A${row}`, { border: true, bold: true, fill: HEADER_FILL });
-    ws.getCell(`B${row}`).value = insp.notes ?? '';
-    ws.mergeCells(`B${row}:L${row}`);
-    styleRange(ws, `B${row}:L${row}`, { border: true });
-    row++;
-  } else {
-    ws.getCell(`A${row}`).value = '（未入力）';
-    ws.mergeCells(`A${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true, align: 'center' });
-    row++;
-  }
-  row++;
-
-  // === 受入先（外注工事含む） ===
-  writeSectionHeader(ws, row, '受入先（外注工事含む）');
-  row++;
-  ws.getCell(`A${row}`).value = '受入先';
-  ws.mergeCells(`A${row}:C${row}`);
-  ws.getCell(`D${row}`).value = '品名';
-  ws.mergeCells(`D${row}:H${row}`);
-  ws.getCell(`I${row}`).value = '数量';
-  ws.mergeCells(`I${row}:J${row}`);
-  ws.getCell(`K${row}`).value = '単位';
-  ws.mergeCells(`K${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
-  const receiveItems = report.receiveItems ?? [];
-  if (receiveItems.length === 0) receiveItems.push({ receiver: '', itemName: '', quantity: '', unit: '' });
-  for (const it of receiveItems) {
-    ws.getCell(`A${row}`).value = it.receiver;
-    ws.mergeCells(`A${row}:C${row}`);
-    ws.getCell(`D${row}`).value = it.itemName;
-    ws.mergeCells(`D${row}:H${row}`);
-    ws.getCell(`I${row}`).value = it.quantity;
-    ws.mergeCells(`I${row}:J${row}`);
-    ws.getCell(`K${row}`).value = it.unit;
-    ws.mergeCells(`K${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    row++;
-  }
-  row++;
-
-  // === 持ち出し品 ===
-  writeSectionHeader(ws, row, '持ち出し品');
-  row++;
-  ws.getCell(`A${row}`).value = '名称';
-  ws.mergeCells(`A${row}:F${row}`);
-  ws.getCell(`G${row}`).value = '数量';
-  ws.mergeCells(`G${row}:I${row}`);
-  ws.getCell(`J${row}`).value = '区分';
-  ws.mergeCells(`J${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
-  const carryOuts = report.carryOutItems ?? [];
-  if (carryOuts.length === 0) {
-    carryOuts.push({ itemName: '', quantity: '', category: CARRY_OUT_CATEGORY.BORROW });
-  }
-  for (const it of carryOuts) {
-    ws.getCell(`A${row}`).value = it.itemName;
-    ws.mergeCells(`A${row}:F${row}`);
-    ws.getCell(`G${row}`).value = it.quantity;
-    ws.mergeCells(`G${row}:I${row}`);
-    ws.getCell(`J${row}`).value = CARRY_OUT_LABEL[it.category] ?? '';
-    ws.mergeCells(`J${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    row++;
-  }
-  row++;
-
-  // === 打合せ記録 ===
-  writeSectionHeader(ws, row, '打合せ記録');
-  row++;
-  ws.getCell(`A${row}`).value = '相手先';
-  ws.mergeCells(`A${row}:C${row}`);
-  ws.getCell(`D${row}`).value = '項目・対策';
-  ws.mergeCells(`D${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
   const meetings = report.meetingRecords ?? [];
-  if (meetings.length === 0) meetings.push({ partner: '', topic: '' });
-  for (const m of meetings) {
-    ws.getCell(`A${row}`).value = m.partner;
-    ws.mergeCells(`A${row}:C${row}`);
-    ws.getCell(`D${row}`).value = m.topic;
-    ws.mergeCells(`D${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
+  for (let i = 0; i < 2; i++) {
+    const m = meetings[i];
+    setCell(ws, `B${row}`, m?.partner ?? '', { border: true, align: 'center', fontSize: 10 });
+    ws.mergeCells(`C${row}:F${row}`);
+    setCell(ws, `C${row}`, m?.topic ?? '', { border: true, align: 'left', fontSize: 10 });
+    // 個人勤務時間 行
+    const indWorks = report.individualWorkTimes ?? [];
+    const iw = indWorks[i];
+    ws.mergeCells(`H${row}:M${row}`);
+    const iwText = iw
+      ? `${iw.name}  ${iw.startTime ?? ''}〜${iw.endTime ?? ''}  ${iw.workContent ?? ''}`
+      : '〜';
+    setCell(ws, `H${row}`, iwText, { border: true, align: 'left', fontSize: 9 });
+    writeTradeRow(ws, row, 16 + i, report);
+    ws.getRow(row).height = 22;
     row++;
   }
-  row++;
 
-  // === 使用機器 ===
-  writeSectionHeader(ws, row, '使用機器');
-  row++;
-  ws.getCell(`A${row}`).value = '機械名';
-  ws.mergeCells(`A${row}:C${row}`);
-  ws.getCell(`D${row}`).value = '自社/リース';
-  ws.getCell(`E${row}`).value = '規格';
-  ws.mergeCells(`E${row}:F${row}`);
-  ws.getCell(`G${row}`).value = '運転者名';
-  ws.mergeCells(`G${row}:I${row}`);
-  ws.getCell(`J${row}`).value = '使用時間';
-  ws.mergeCells(`J${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
-  const machines = report.machineUsages ?? [];
-  if (machines.length === 0) {
-    machines.push({ machineName: '', ownership: MACHINE_OWNERSHIP.OWN, spec: '', operator: '', usageHours: '' });
-  }
-  for (const m of machines) {
-    ws.getCell(`A${row}`).value = m.machineName;
-    ws.mergeCells(`A${row}:C${row}`);
-    ws.getCell(`D${row}`).value = OWNERSHIP_LABEL[m.ownership] ?? '';
-    ws.getCell(`E${row}`).value = m.spec;
-    ws.mergeCells(`E${row}:F${row}`);
-    ws.getCell(`G${row}`).value = m.operator;
-    ws.mergeCells(`G${row}:I${row}`);
-    ws.getCell(`J${row}`).value = m.usageHours;
-    ws.mergeCells(`J${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    row++;
-  }
-  row++;
+  // ============================================================
+  // 使用機器セクション（左ブロック）+ 個人勤務続き
+  // ============================================================
+  const machineRows = 5;
+  // 使用機器 縦書き A列
+  ws.mergeCells(`A${row}:A${row + machineRows}`);
+  setCell(ws, `A${row}`, '使\n用\n機\n器', {
+    border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 10,
+  });
+  // ヘッダ
+  setCell(ws, `B${row}`, '機械名', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `C${row}`, '自社・リース', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 8 });
+  setCell(ws, `D${row}`, '規格', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `E${row}`, '運転者名', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `F${row}`, '使用時間', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
 
-  // === 個人勤務時間 ===
-  writeSectionHeader(ws, row, '個人勤務時間');
-  row++;
-  ws.getCell(`A${row}`).value = '氏名';
-  ws.mergeCells(`A${row}:C${row}`);
-  ws.getCell(`D${row}`).value = '開始';
-  ws.getCell(`E${row}`).value = '終了';
-  ws.getCell(`F${row}`).value = '業務内容';
-  ws.mergeCells(`F${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
+  // 個人勤務時間 続き
   const indWorks = report.individualWorkTimes ?? [];
-  if (indWorks.length === 0) indWorks.push({ name: '', startTime: '', endTime: '', workContent: '' });
-  for (const w of indWorks) {
-    ws.getCell(`A${row}`).value = w.name;
-    ws.mergeCells(`A${row}:C${row}`);
-    ws.getCell(`D${row}`).value = w.startTime;
-    ws.getCell(`E${row}`).value = w.endTime;
-    ws.getCell(`F${row}`).value = w.workContent;
-    ws.mergeCells(`F${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    row++;
-  }
+  const iw = indWorks[2];
+  ws.mergeCells(`H${row}:M${row}`);
+  const iwText = iw
+    ? `${iw.name}  ${iw.startTime ?? ''}〜${iw.endTime ?? ''}  ${iw.workContent ?? ''}`
+    : '〜';
+  setCell(ws, `H${row}`, iwText, { border: true, align: 'left', fontSize: 9 });
+  writeTradeRow(ws, row, 18, report);
   row++;
 
-  // === 職種別稼動人員（27職種） ===
-  writeSectionHeader(ws, row, '職種別稼動人員');
-  row++;
-  // ヘッダ行（3列ペア × 3 = 9列）：左ブロックから3列ずつに圧縮
-  ws.getCell(`A${row}`).value = '職種';
-  ws.getCell(`B${row}`).value = '本日';
-  ws.getCell(`C${row}`).value = '累計';
-  ws.getCell(`D${row}`).value = '職種';
-  ws.getCell(`E${row}`).value = '本日';
-  ws.getCell(`F${row}`).value = '累計';
-  ws.getCell(`G${row}`).value = '職種';
-  ws.getCell(`H${row}`).value = '本日';
-  ws.getCell(`I${row}`).value = '累計';
-  ws.getCell(`J${row}`).value = '職種';
-  ws.getCell(`K${row}`).value = '本日';
-  ws.getCell(`L${row}`).value = '累計';
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center', fill: HEADER_FILL });
-  row++;
-  // 27項目を 4列 × 7行に並べる（最後の行は3列分のみ）
-  const tw = report.tradeWorkers ?? {};
-  const colsPerRow = 4;
-  const totalRows = Math.ceil(TRADE_TYPES.length / colsPerRow);
-  for (let r = 0; r < totalRows; r++) {
-    for (let c = 0; c < colsPerRow; c++) {
-      const idx = r * colsPerRow + c;
-      const trade = TRADE_TYPES[idx];
-      const baseCol = c * 3 + 1; // A=1
-      if (trade) {
-        const entry = tw[trade];
-        ws.getCell(row, baseCol).value = TRADE_LABELS[trade];
-        ws.getCell(row, baseCol + 1).value = entry?.today ?? '';
-        ws.getCell(row, baseCol + 2).value = entry?.cumulative ?? '';
-      } else {
-        // 27項目超の空セル
-        ws.getCell(row, baseCol).value = '';
-        ws.getCell(row, baseCol + 1).value = '';
-        ws.getCell(row, baseCol + 2).value = '';
-      }
+  for (let i = 0; i < machineRows; i++) {
+    const machine = (report.machineUsages ?? [])[i];
+    setCell(ws, `B${row}`, machine?.machineName ?? '', { border: true, align: 'center', fontSize: 9 });
+    setCell(ws, `C${row}`, machine ? OWNERSHIP_LABEL[machine.ownership] : '', {
+      border: true, align: 'center', fontSize: 9,
+    });
+    setCell(ws, `D${row}`, machine?.spec ?? '', { border: true, align: 'center', fontSize: 9 });
+    setCell(ws, `E${row}`, machine?.operator ?? '', { border: true, align: 'center', fontSize: 9 });
+    setCell(ws, `F${row}`, machine?.usageHours ? `${machine.usageHours}h` : 'h', {
+      border: true, align: 'center', fontSize: 9,
+    });
+    // 個人勤務時間
+    const iwI = indWorks[3 + i];
+    ws.mergeCells(`H${row}:M${row}`);
+    const text = iwI
+      ? `${iwI.name}  ${iwI.startTime ?? ''}〜${iwI.endTime ?? ''}  ${iwI.workContent ?? ''}`
+      : '〜';
+    setCell(ws, `H${row}`, text, { border: true, align: 'left', fontSize: 9 });
+    // 稼動人員: i 番目
+    const tradeIdx = 19 + i;
+    if (tradeIdx < TRADE_TYPES.length) {
+      writeTradeRow(ws, row, tradeIdx, report);
+    } else {
+      writeBlankTradeRow(ws, row);
     }
-    styleRange(ws, `A${row}:L${row}`, { border: true, align: 'center' });
+    ws.getRow(row).height = 20;
     row++;
   }
 
-  // 合計行
-  ws.getCell(`A${row}`).value = '合計人員';
-  ws.mergeCells(`A${row}:B${row}`);
-  ws.getCell(`C${row}`).value = report.totalWorkerCount;
-  ws.getCell(`D${row}`).value = '労働本日時間';
-  ws.mergeCells(`D${row}:F${row}`);
-  ws.getCell(`G${row}`).value = report.laborHoursToday ?? '';
-  ws.getCell(`H${row}`).value = '労働累計時間';
-  ws.mergeCells(`H${row}:J${row}`);
-  ws.getCell(`K${row}`).value = report.laborHoursCumulative ?? '';
-  ws.mergeCells(`K${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { border: true, bold: true, align: 'center' });
+  // ============================================================
+  // 残りの稼働人員行（24職種目以降）+ 合計行 + 労働本日/累計
+  // ============================================================
+  while (true) {
+    const tradeIdx = 19 + machineRows + (row - (workSectionRowStart + 7 + 4 + 3 + machineRows));
+    void tradeIdx;
+    break;
+  }
+  // 残り職種を埋める（職種総数 27 + 合計）
+  // すでに 0..(19+machineRows-1)= 0..23 を書いた前提。残り 24..26 + 合計 を3行で出す。
+  const remainingTrades = [
+    TRADE_TYPES[24], // クレーン
+    TRADE_TYPES[25], // 解体工
+    TRADE_TYPES[26], // 職員
+  ];
+  for (const trade of remainingTrades) {
+    // 左+中央は空欄行
+    setCell(ws, `A${row}`, '', { border: true });
+    setCell(ws, `B${row}`, '', { border: true });
+    setCell(ws, `C${row}`, '', { border: true });
+    setCell(ws, `D${row}`, '', { border: true });
+    setCell(ws, `E${row}`, '', { border: true });
+    setCell(ws, `F${row}`, '', { border: true });
+    setCell(ws, `G${row}`, '', { border: true });
+    ws.mergeCells(`H${row}:M${row}`);
+    setCell(ws, `H${row}`, '', { border: true });
+    if (trade) {
+      const idx = TRADE_TYPES.indexOf(trade);
+      writeTradeRow(ws, row, idx, report);
+    }
+    ws.getRow(row).height = 18;
+    row++;
+  }
+
+  // 合計 + 労働時間
+  setCell(ws, `A${row}`, '', { border: true });
+  ws.mergeCells(`B${row}:G${row}`);
+  setCell(ws, `B${row}`, '', { border: true });
+  ws.mergeCells(`H${row}:I${row}`);
+  setCell(ws, `H${row}`, '労働本日', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`J${row}:K${row}`);
+  setCell(ws, `J${row}`, report.laborHoursToday !== undefined ? `${report.laborHoursToday}` : '', {
+    border: true, align: 'center', fontSize: 11, bold: true,
+  });
+  setCell(ws, `L${row}`, '時間', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `M${row}`, '', { border: true });
+  setCell(ws, `N${row}`, '合計', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  setCell(ws, `O${row}`, report.totalWorkerCount, { border: true, align: 'center', fontSize: 11, bold: true });
+  setCell(ws, `P${row}`, '', { border: true });
+  row++;
+  setCell(ws, `A${row}`, '', { border: true });
+  ws.mergeCells(`B${row}:G${row}`);
+  setCell(ws, `B${row}`, '（注）記入項目のない箇所は該当なし。必ず毎日提出すること。', {
+    border: false, align: 'left', fontSize: 9,
+  });
+  ws.mergeCells(`H${row}:I${row}`);
+  setCell(ws, `H${row}`, '労働延時間 累計', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`J${row}:K${row}`);
+  setCell(ws, `J${row}`, report.laborHoursCumulative !== undefined ? `${report.laborHoursCumulative}` : '', {
+    border: true, align: 'center', fontSize: 11, bold: true,
+  });
+  setCell(ws, `L${row}`, '時間', { border: true, align: 'center', fontSize: 9 });
+  setCell(ws, `M${row}`, '', { border: true });
+  // 累計の合計
+  const cumTotal = computeCumulativeTotal(report);
+  setCell(ws, `N${row}`, '累計', { border: true, bold: true, align: 'center', fill: HEADER_FILL, fontSize: 9 });
+  ws.mergeCells(`O${row}:P${row}`);
+  setCell(ws, `O${row}`, cumTotal, { border: true, align: 'center', fontSize: 11, bold: true });
   row++;
 
-  // 備考
-  if (report.notes) {
-    row++;
-    writeSectionHeader(ws, row, '備考');
-    row++;
-    ws.getCell(`A${row}`).value = report.notes;
-    ws.mergeCells(`A${row}:L${row}`);
-    styleRange(ws, `A${row}:L${row}`, { border: true });
-    ws.getRow(row).height = 60;
-  }
-
-  // 注意書き（フッタ）
-  row += 2;
-  ws.getCell(`A${row}`).value = '（注）記入項目のない箇所は該当なし。必ず毎日提出すること。';
-  ws.mergeCells(`A${row}:L${row}`);
-  styleRange(ws, `A${row}:L${row}`, { fontSize: 9 });
+  // 印刷時の縮小
+  ws.pageSetup.printArea = `A1:P${row - 1}`;
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
+}
+
+/**
+ * 稼動人員の行を書き込む（N=職種ラベル / O=本日 / P=累計）
+ * tradeIdx は TRADE_TYPES 配列のインデックス。
+ */
+function writeTradeRow(
+  ws: ExcelJS.Worksheet,
+  row: number,
+  tradeIdx: number,
+  report: FieldReport
+): void {
+  if (tradeIdx >= TRADE_TYPES.length) {
+    writeBlankTradeRow(ws, row);
+    return;
+  }
+  const trade = TRADE_TYPES[tradeIdx];
+  if (!trade) return;
+  const tw = report.tradeWorkers?.[trade];
+  setCell(ws, `N${row}`, TRADE_LABELS[trade], {
+    border: true, align: 'center', fontSize: 9,
+  });
+  setCell(ws, `O${row}`, tw?.today != null ? `${tw.today.toFixed(1)}` : '', {
+    border: true, align: 'right', fontSize: 10,
+  });
+  setCell(ws, `P${row}`, tw?.cumulative != null ? `${tw.cumulative.toFixed(1)}` : '', {
+    border: true, align: 'right', fontSize: 10,
+  });
+}
+
+function writeBlankTradeRow(ws: ExcelJS.Worksheet, row: number): void {
+  setCell(ws, `N${row}`, '', { border: true });
+  setCell(ws, `O${row}`, '', { border: true });
+  setCell(ws, `P${row}`, '', { border: true });
+}
+
+/** 累計の合計を計算 */
+function computeCumulativeTotal(report: FieldReport): string {
+  const tw = report.tradeWorkers ?? {};
+  const sum = TRADE_TYPES.reduce((acc, trade) => {
+    const v = tw[trade]?.cumulative ?? 0;
+    return acc + v;
+  }, 0);
+  if (sum === 0) return '';
+  return sum.toFixed(1);
 }
 
 /** Excel ダウンロード時のファイル名 */
