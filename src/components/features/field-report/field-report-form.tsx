@@ -459,6 +459,9 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
           </Button>
           <Button
             onClick={async () => {
+              // 検証前に空エントリを除去（自社作業員等で「行を追加」だけ
+              // して埋めずに残した行を弾かれないように）
+              pruneEmptyArrays();
               // 検証 → 失敗ならエラー詳細をトーストに出してプレビューに留まる
               const isValid = await form.trigger();
               if (!isValid) {

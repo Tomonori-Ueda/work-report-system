@@ -19,10 +19,17 @@ const timeStringNullableSchema = z
   .nullable()
   .optional();
 
-/** 時刻文字列バリデーション（HH:mm形式、optional） */
+/**
+ * 時刻文字列バリデーション（HH:mm形式、optional）
+ * フォームのデフォルト値が "" のため、空文字も許容する。
+ * Why: optional は undefined を許容するだけで、'' は regex 検証で
+ *      落ちてしまい「時刻形式が不正です」エラーになる。
+ */
 const timeStringOptionalSchema = z
-  .string()
-  .regex(/^\d{2}:\d{2}$/, '時刻形式が不正です（HH:mm）')
+  .union([
+    z.string().regex(/^\d{2}:\d{2}$/, '時刻形式が不正です（HH:mm）'),
+    z.literal(''),
+  ])
   .optional();
 
 /** 協力会社作業記録スキーマ */
