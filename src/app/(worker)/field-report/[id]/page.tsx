@@ -9,8 +9,14 @@ import { isSupervisor } from '@/types/user';
 import {
   WEATHER,
   EXPENSE_CATEGORY,
+  CARRY_OUT_CATEGORY,
+  MACHINE_OWNERSHIP,
+  TRADE_TYPES,
+  TRADE_LABELS,
   type Weather,
   type ExpenseCategory,
+  type CarryOutCategory,
+  type MachineOwnership,
 } from '@/types/field-report';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +60,19 @@ const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   [EXPENSE_CATEGORY.LABOR]: '労務費',
   [EXPENSE_CATEGORY.SUBCONTRACT]: '外注費',
   [EXPENSE_CATEGORY.OTHER]: '経費',
+};
+
+/** 持ち出し品の取扱区分ラベル */
+const CARRY_OUT_LABELS: Record<CarryOutCategory, string> = {
+  [CARRY_OUT_CATEGORY.BORROW]: '借入',
+  [CARRY_OUT_CATEGORY.RETURN]: '返却',
+  [CARRY_OUT_CATEGORY.CONSUME]: '消却',
+};
+
+/** 機器の所有区分ラベル */
+const OWNERSHIP_LABELS: Record<MachineOwnership, string> = {
+  [MACHINE_OWNERSHIP.OWN]: '自社',
+  [MACHINE_OWNERSHIP.LEASE]: 'リース',
 };
 
 interface PageProps {
@@ -334,6 +353,328 @@ export default function FieldReportDetailPage({ params }: PageProps) {
         </Card>
       )}
 
+      {/* === Phase 2/4: 様式7.5-9-02 拡張フィールドの表示 === */}
+
+      {/* 様式ヘッダ情報 */}
+      {(report.projectName ||
+        report.siteResponsible ||
+        report.supervisorWorkStart ||
+        report.supervisorWorkEnd ||
+        report.workTimeStart) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">様式7.5-9-02 ヘッダ情報</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {report.projectName && (
+              <KvRow label="工事名" value={report.projectName} />
+            )}
+            {report.siteResponsible && (
+              <KvRow label="現場責任者" value={report.siteResponsible} />
+            )}
+            {(report.supervisorWorkStart || report.supervisorWorkEnd) && (
+              <KvRow
+                label="監督勤務時間"
+                value={`${report.supervisorWorkStart ?? ''} 〜 ${report.supervisorWorkEnd ?? ''}`}
+              />
+            )}
+            {report.workTimeStart && (
+              <KvRow label="作業時間 開始" value={report.workTimeStart} />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 自社作業員 */}
+      {report.ownEmployees && report.ownEmployees.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">自社作業員</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">氏名</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">作業内容</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.ownEmployees.map((e, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2 font-medium">{e.displayName}</td>
+                    <td className="py-2 pl-3">{e.workContent}</td>
+                    <td className="py-2 pl-3 text-muted-foreground">
+                      {e.startTime && e.endTime
+                        ? `${e.startTime}〜${e.endTime}`
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 工程内検査 */}
+      {report.processInspection && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">工程内検査</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-xs">
+              {(
+                [
+                  ['foundation_pile', '基礎杭'],
+                  ['rebar', '鉄筋'],
+                  ['formwork', '型枠'],
+                  ['concrete', 'コンクリート'],
+                  ['roof', '屋根'],
+                  ['exterior_wall', '外壁'],
+                  ['internal_waterproof', '内部防水'],
+                  ['electrical', '電気'],
+                  ['plumbing', '給排水衛生'],
+                  ['roof_waterproof', '屋根防水'],
+                  ['interior', '内装'],
+                ] as const
+              ).map(([key, label]) => (
+                <span key={key} className="flex items-center gap-1">
+                  <span>{report.processInspection?.[key] ? '☑' : '☐'}</span>
+                  <span>{label}</span>
+                </span>
+              ))}
+            </div>
+            {report.processInspection.notes && (
+              <div>
+                <p className="text-xs text-muted-foreground mt-2">指摘・是正事項</p>
+                <p className="whitespace-pre-wrap mt-1">{report.processInspection.notes}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 受入先（外注工事含む） */}
+      {report.receiveItems && report.receiveItems.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">受入先（外注工事含む）</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">受入先</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">品名</th>
+                  <th className="text-right pb-2 pl-3 font-medium text-muted-foreground">数量</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">単位</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.receiveItems.map((it, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2">{it.receiver}</td>
+                    <td className="py-2 pl-3">{it.itemName}</td>
+                    <td className="py-2 pl-3 text-right">{it.quantity}</td>
+                    <td className="py-2 pl-3 text-muted-foreground">{it.unit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 持ち出し品 */}
+      {report.carryOutItems && report.carryOutItems.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">持ち出し品</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">名称</th>
+                  <th className="text-right pb-2 pl-3 font-medium text-muted-foreground">数量</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">区分</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.carryOutItems.map((it, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2">{it.itemName}</td>
+                    <td className="py-2 pl-3 text-right">{it.quantity}</td>
+                    <td className="py-2 pl-3 text-muted-foreground">
+                      {CARRY_OUT_LABELS[it.category] ?? it.category}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 打合せ記録 */}
+      {report.meetingRecords && report.meetingRecords.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">打合せ記録</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">相手先</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">項目・対策</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.meetingRecords.map((m, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2">{m.partner}</td>
+                    <td className="py-2 pl-3 whitespace-pre-wrap">{m.topic}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 使用機器 */}
+      {report.machineUsages && report.machineUsages.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">使用機器</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">機械名</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">区分</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">規格</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">運転者</th>
+                  <th className="text-right pb-2 pl-3 font-medium text-muted-foreground">使用時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.machineUsages.map((m, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2">{m.machineName}</td>
+                    <td className="py-2 pl-3 text-muted-foreground">
+                      {OWNERSHIP_LABELS[m.ownership] ?? m.ownership}
+                    </td>
+                    <td className="py-2 pl-3">{m.spec}</td>
+                    <td className="py-2 pl-3">{m.operator}</td>
+                    <td className="py-2 pl-3 text-right">{m.usageHours}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 個人勤務時間 */}
+      {report.individualWorkTimes && report.individualWorkTimes.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">個人勤務時間</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-2 font-medium text-muted-foreground">氏名</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">時間</th>
+                  <th className="text-left pb-2 pl-3 font-medium text-muted-foreground">業務内容</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.individualWorkTimes.map((w, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 pr-2">{w.name}</td>
+                    <td className="py-2 pl-3 text-muted-foreground">
+                      {w.startTime}〜{w.endTime}
+                    </td>
+                    <td className="py-2 pl-3">{w.workContent}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 職種別稼動人員（27職種・入力済みのみ） */}
+      {report.tradeWorkers &&
+        Object.keys(report.tradeWorkers).length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">職種別稼動人員</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left pb-2 font-medium text-muted-foreground">職種</th>
+                    <th className="text-right pb-2 pl-3 font-medium text-muted-foreground">本日</th>
+                    <th className="text-right pb-2 pl-3 font-medium text-muted-foreground">累計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {TRADE_TYPES.filter((t) => report.tradeWorkers?.[t]).map(
+                    (t) => {
+                      const v = report.tradeWorkers![t]!;
+                      return (
+                        <tr key={t} className="border-b last:border-0">
+                          <td className="py-1 pr-2">{TRADE_LABELS[t]}</td>
+                          <td className="py-1 pl-3 text-right tabular-nums">
+                            {v.today}
+                          </td>
+                          <td className="py-1 pl-3 text-right tabular-nums">
+                            {v.cumulative}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        )}
+
+      {/* 労働時間累計 */}
+      {(report.laborHoursToday !== undefined ||
+        report.laborHoursCumulative !== undefined) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">労働時間累計</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {report.laborHoursToday !== undefined && (
+              <KvRow
+                label="労働本日時間"
+                value={`${report.laborHoursToday} 時間`}
+              />
+            )}
+            {report.laborHoursCumulative !== undefined && (
+              <KvRow
+                label="労働延時間 累計"
+                value={`${report.laborHoursCumulative} 時間`}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* 備考 */}
       {report.notes && (
         <Card>
@@ -345,6 +686,16 @@ export default function FieldReportDetailPage({ params }: PageProps) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** ラベル/値の1行表示（再利用用） */
+function KvRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-right">{value}</span>
     </div>
   );
 }
