@@ -92,6 +92,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       subcontractorWorks,
       materialDeliveries,
       notes,
+      // Phase 2 拡張
+      projectName,
+      siteResponsible,
+      supervisorWorkStart,
+      supervisorWorkEnd,
+      workTimeStart,
+      processInspection,
+      receiveItems,
+      carryOutItems,
+      meetingRecords,
+      machineUsages,
+      individualWorkTimes,
+      ownEmployees,
+      tradeWorkers,
+      laborHoursToday,
+      laborHoursCumulative,
     } = parsed.data;
 
     // siteId or reportDate が変更される場合は重複チェック
@@ -134,6 +150,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       materialDeliveries,
       notes: notes ?? null,
       totalWorkerCount,
+      // Phase 2 拡張: undefined のものは Firestore 書き込み時に省略
+      ...(projectName !== undefined && { projectName }),
+      ...(siteResponsible !== undefined && { siteResponsible }),
+      ...(supervisorWorkStart !== undefined && { supervisorWorkStart }),
+      ...(supervisorWorkEnd !== undefined && { supervisorWorkEnd }),
+      ...(workTimeStart !== undefined && { workTimeStart }),
+      ...(processInspection !== undefined && { processInspection }),
+      ...(receiveItems !== undefined && { receiveItems }),
+      ...(carryOutItems !== undefined && { carryOutItems }),
+      ...(meetingRecords !== undefined && { meetingRecords }),
+      ...(machineUsages !== undefined && { machineUsages }),
+      ...(individualWorkTimes !== undefined && { individualWorkTimes }),
+      ...(ownEmployees !== undefined && { ownEmployees }),
+      ...(tradeWorkers !== undefined && { tradeWorkers }),
+      ...(laborHoursToday !== undefined && { laborHoursToday }),
+      ...(laborHoursCumulative !== undefined && { laborHoursCumulative }),
       updatedAt: FieldValue.serverTimestamp(),
     };
 

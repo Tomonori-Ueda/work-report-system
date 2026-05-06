@@ -43,10 +43,13 @@ import { formatDateToISO } from '@/lib/utils/date';
 import {
   WEATHER,
   EXPENSE_CATEGORY,
+  createEmptyProcessInspection,
   type Weather,
   type ExpenseCategory,
   type FieldReport,
+  type ProcessInspection,
 } from '@/types/field-report';
+import { Checkbox } from '@/components/ui/checkbox';
 
 /** 現場マスター型 */
 interface SiteMaster {
@@ -95,8 +98,37 @@ function createDefaultSubcontractorWork(): CreateFieldReportFormValues['subcontr
     expenseCategory: EXPENSE_CATEGORY.LABOR,
     startTime: undefined,
     endTime: undefined,
+    workerNames: [],
   };
 }
+
+/** 新規自社作業員行のデフォルト値 */
+function createDefaultOwnEmployee(): CreateFieldReportFormValues['ownEmployees'] extends Array<infer T> | undefined
+  ? T
+  : never {
+  return {
+    userId: null,
+    displayName: '',
+    workContent: '',
+    startTime: null,
+    endTime: null,
+  };
+}
+
+/** 工程内検査チェックボックスの順序とラベル（Excel出力と同順） */
+const PROCESS_INSPECTION_ITEMS: Array<[keyof ProcessInspection, string]> = [
+  ['foundation_pile', '基礎杭'],
+  ['rebar', '鉄筋'],
+  ['formwork', '型枠'],
+  ['concrete', 'コンクリート'],
+  ['roof', '屋根'],
+  ['exterior_wall', '外壁'],
+  ['internal_waterproof', '内部防水'],
+  ['electrical', '電気'],
+  ['plumbing', '給排水衛生'],
+  ['roof_waterproof', '屋根防水'],
+  ['interior', '内装'],
+];
 
 /** 新規資材搬入行のデフォルト値 */
 function createDefaultMaterialDelivery(): CreateFieldReportFormValues['materialDeliveries'][number] {
@@ -177,10 +209,19 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
               ...w,
               startTime: w.startTime ?? null,
               endTime: w.endTime ?? null,
+              workerNames: w.workerNames ?? [],
             }))
           : [createDefaultSubcontractorWork()],
       materialDeliveries: defaultReport?.materialDeliveries ?? [],
       notes: defaultReport?.notes ?? '',
+      // === Phase 2 拡張 ===
+      projectName: defaultReport?.projectName ?? '',
+      siteResponsible: defaultReport?.siteResponsible ?? '',
+      supervisorWorkStart: defaultReport?.supervisorWorkStart ?? '',
+      supervisorWorkEnd: defaultReport?.supervisorWorkEnd ?? '',
+      workTimeStart: defaultReport?.workTimeStart ?? '',
+      processInspection: defaultReport?.processInspection ?? createEmptyProcessInspection(),
+      ownEmployees: defaultReport?.ownEmployees ?? [],
     },
   });
 
@@ -200,6 +241,15 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
   } = useFieldArray({
     control: form.control,
     name: 'materialDeliveries',
+  });
+
+  const {
+    fields: ownEmployeeFields,
+    append: appendOwnEmployee,
+    remove: removeOwnEmployee,
+  } = useFieldArray({
+    control: form.control,
+    name: 'ownEmployees',
   });
 
   // 合計人数をリアルタイム計算
@@ -358,6 +408,102 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
         {/* 現場名 */}
         <SiteField form={form} sites={sites} />
 
+        {/* 様式7.5-9-02 ヘッダ情報 */}
+        <Card className="border-dashed">
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <p className="text-sm font-medium text-muted-foreground">
+              様式7.5-9-02 ヘッダ情報（任意）
+            </p>
+            <FormField
+              control={form.control}
+              name="projectName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>工事名</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="例: (軽井沢)小峯様別荘新築工事"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="siteResponsible"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>現場責任者</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="例: 小林 紀之"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="supervisorWorkStart"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>監督勤務開始</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="time"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="supervisorWorkEnd"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>監督勤務終了</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="time"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="workTimeStart"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>作業時間 開始</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="time"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
         {/* 協力会社セクション */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -401,6 +547,153 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
             </p>
           )}
         </div>
+
+        {/* 自社作業員セクション（人名単位） */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">自社作業員（人名単位・任意）</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] px-4"
+              onClick={() => appendOwnEmployee(createDefaultOwnEmployee())}
+            >
+              <PlusCircle className="h-4 w-4 mr-1" />
+              行を追加
+            </Button>
+          </div>
+          {ownEmployeeFields.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
+              自社（直営）作業員を入れた場合は氏名を追加してください
+            </p>
+          )}
+          {ownEmployeeFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    自社作業員 {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeOwnEmployee(index)}
+                    className="h-11 w-11 text-muted-foreground hover:text-destructive"
+                    aria-label={`自社作業員 ${index + 1} を削除`}
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                </div>
+                <FormField
+                  control={form.control}
+                  name={`ownEmployees.${index}.displayName`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>氏名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 田中 太郎" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`ownEmployees.${index}.workContent`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>作業内容</FormLabel>
+                      <FormControl>
+                        <Input placeholder="作業内容" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`ownEmployees.${index}.startTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>開始（任意）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="time"
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`ownEmployees.${index}.endTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>終了（任意）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="time"
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* 工程内検査セクション */}
+        <Card className="border-dashed">
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <p className="text-sm font-medium">工程内検査（任意）</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {PROCESS_INSPECTION_ITEMS.map(([key, label]) => (
+                <FormField
+                  key={key}
+                  control={form.control}
+                  name={`processInspection.${key}`}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={Boolean(field.value)}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel className="text-sm font-normal cursor-pointer">
+                        {label}
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+              ))}
+            </div>
+            <FormField
+              control={form.control}
+              name="processInspection.notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>指摘・是正事項</FormLabel>
+                  <FormControl>
+                    <Textarea rows={2} {...field} value={field.value ?? ''} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
 
         {/* 資材搬入セクション */}
         <div className="space-y-3">
@@ -789,6 +1082,36 @@ function SubcontractorWorkRow({
             {form.formState.errors.subcontractorWorks[index].endTime?.message}
           </p>
         )}
+
+        {/* 作業員氏名（カンマまたは改行区切り。Phase 3 名寄せ用） */}
+        <FormField
+          control={form.control}
+          name={`subcontractorWorks.${index}.workerNames`}
+          render={({ field }) => {
+            const valueArr = (field.value as string[] | undefined) ?? [];
+            const text = valueArr.join('\n');
+            return (
+              <FormItem>
+                <FormLabel>作業員氏名（任意・改行区切り）</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="例：山田 太郎&#10;佐藤 次郎"
+                    rows={2}
+                    value={text}
+                    onChange={(e) => {
+                      const names = e.target.value
+                        .split(/[\n,、]/)
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0);
+                      field.onChange(names);
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
+        />
       </CardContent>
     </Card>
   );

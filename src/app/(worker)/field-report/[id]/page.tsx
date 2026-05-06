@@ -4,6 +4,7 @@ import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useFieldReport, useDeleteFieldReport } from '@/hooks/use-field-reports';
+import { getIdToken } from '@/lib/firebase/auth';
 import { isSupervisor } from '@/types/user';
 import {
   WEATHER,
@@ -34,6 +35,7 @@ import {
   Sun,
   Snowflake,
   ArrowLeft,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -110,6 +112,39 @@ export default function FieldReportDetailPage({ params }: PageProps) {
   const isOwner = report.supervisorId === uid;
   const weather = WEATHER_DISPLAY[report.weather as Weather] ?? { label: report.weather, icon: null };
 
+  /**
+   * 様式7.5-9-02 の Excel をダウンロードする。
+   * Authorization ヘッダで IDトークンを渡し、レスポンス Blob から仮想リンクで保存する。
+   */
+  async function handleDownloadExcel() {
+    try {
+      const token = await getIdToken();
+      const res = await fetch(`/api/field-reports/${id}/excel`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error('Excel生成に失敗しました');
+
+      const blob = await res.blob();
+      // ファイル名を Content-Disposition から取り出す（filename*=UTF-8''…）
+      const dispo = res.headers.get('Content-Disposition') ?? '';
+      const m = dispo.match(/filename\*=UTF-8''([^;]+)/);
+      const fileName = m?.[1]
+        ? decodeURIComponent(m[1])
+        : `打合せ指示書_${report?.reportDate ?? ''}.xlsx`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ダウンロードに失敗しました');
+    }
+  }
+
   async function handleDelete() {
     try {
       await deleteFieldReport.mutateAsync(id);
@@ -156,8 +191,17 @@ export default function FieldReportDetailPage({ params }: PageProps) {
           <h1 className="text-xl font-bold">{report.siteName}</h1>
           <p className="text-sm text-muted-foreground mt-1">{report.reportDate}</p>
         </div>
-        {isOwner && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[40px]"
+            onClick={() => void handleDownloadExcel()}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            様式7.5-9-02
+          </Button>
+          {isOwner && (
             <Button
               variant="outline"
               size="sm"
@@ -167,6 +211,8 @@ export default function FieldReportDetailPage({ params }: PageProps) {
               <Pencil className="h-4 w-4 mr-1" />
               編集
             </Button>
+          )}
+          {isOwner && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
@@ -198,8 +244,8 @@ export default function FieldReportDetailPage({ params }: PageProps) {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 基本情報 */}
