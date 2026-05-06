@@ -56,8 +56,8 @@ export function ApprovalActions({
       toast.success('現場監督確認済みにしました');
       onSupervisorConfirm?.();
       router.push('/dashboard');
-    } catch {
-      toast.error('確認処理に失敗しました');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '確認処理に失敗しました');
     }
   }
 
@@ -68,8 +68,8 @@ export function ApprovalActions({
       toast.success('施工部長チェック済みにしました');
       onCheck?.();
       router.push('/dashboard');
-    } catch {
-      toast.error('チェック処理に失敗しました');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'チェック処理に失敗しました');
     }
   }
 
@@ -80,8 +80,9 @@ export function ApprovalActions({
       toast.success('日報を承認しました');
       onApprove?.();
       router.push('/dashboard');
-    } catch {
-      toast.error('承認に失敗しました');
+    } catch (e) {
+      // 4枠承認の順序ガード違反などをサーバーから返るメッセージそのままで表示する
+      toast.error(e instanceof Error ? e.message : '承認に失敗しました');
     }
   }
 
@@ -93,8 +94,8 @@ export function ApprovalActions({
       setShowRejectDialog(false);
       onReject?.();
       router.push('/dashboard');
-    } catch {
-      toast.error('差し戻しに失敗しました');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '差し戻しに失敗しました');
     }
   }
 
@@ -117,9 +118,16 @@ export function ApprovalActions({
     );
   }
 
-  // B（施工部長）: supervisor_confirmed のときのみ「チェック済みにする」
+  // 4枠承認の対象ステータス（押印フェーズ中）
+  const isApprovalPhase =
+    currentStatus === REPORT_STATUS.SUBMITTED ||
+    currentStatus === REPORT_STATUS.SUPERVISOR_CONFIRMED ||
+    currentStatus === REPORT_STATUS.MANAGER_CHECKED;
+
+  // B（施工部長）: 押印フェーズ中はいつでもボタン表示。
+  // 順序判定はサーバー側（4枠承認の最初の slot）に任せ、失敗時は toast で通知する。
   if (userRole === USER_ROLE.B) {
-    if (currentStatus !== REPORT_STATUS.SUPERVISOR_CONFIRMED) return null;
+    if (!isApprovalPhase) return null;
     return (
       <Button
         onClick={handleManagerCheck}
@@ -132,15 +140,9 @@ export function ApprovalActions({
     );
   }
 
-  // A（専務・常務）: supervisor_confirmed 以降で承認・差し戻し可能
-  // 要件上 B（施工部長）は目視確認のみで承認操作不可のため、B がスキップしても承認できるよう
-  // manager_checked と supervisor_confirmed の両方で表示する
+  // A（専務・常務）: 押印フェーズ中は承認・差し戻しを表示。順序ガードはサーバー側で。
   if (userRole === USER_ROLE.A) {
-    if (
-      currentStatus !== REPORT_STATUS.MANAGER_CHECKED &&
-      currentStatus !== REPORT_STATUS.SUPERVISOR_CONFIRMED
-    )
-      return null;
+    if (!isApprovalPhase) return null;
     return (
       <>
         <div className="flex gap-3">
@@ -170,10 +172,9 @@ export function ApprovalActions({
     );
   }
 
-  // S（社長）: どのステータスでも承認・差し戻しを表示
+  // S（社長）: 押印フェーズ中は承認・差し戻しを表示
   if (userRole === USER_ROLE.S) {
-    // draft は除外（提出前は操作不要）
-    if (currentStatus === REPORT_STATUS.DRAFT) return null;
+    if (!isApprovalPhase) return null;
     return (
       <>
         <div className="flex gap-3">

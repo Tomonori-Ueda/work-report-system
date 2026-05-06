@@ -324,9 +324,83 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
   const isSubmitting = form.formState.isSubmitting;
   const previewValues = form.watch();
 
+  /**
+   * 動的セクション（自社作業員・受入先・持ち出し品・打合せ・使用機器・個人勤務時間）で
+   * ユーザーが「行を追加」だけして埋めずに残した空行を、検証前に削除する。
+   *
+   * Why: 空行を残したまま「内容を確認する」を押すと displayName 等の必須エラーで
+   *      trigger() が失敗し、UIには反応がないように見えてしまう。
+   *      空行は明らかに送信不要なので自動で除去する。
+   */
+  function pruneEmptyArrays(): void {
+    const values = form.getValues();
+    const next = {
+      ownEmployees: (values.ownEmployees ?? []).filter(
+        (e) => (e.displayName ?? '').trim().length > 0
+      ),
+      receiveItems: (values.receiveItems ?? []).filter(
+        (e) =>
+          (e.receiver ?? '').trim().length > 0 ||
+          (e.itemName ?? '').trim().length > 0 ||
+          (e.quantity ?? '').trim().length > 0 ||
+          (e.unit ?? '').trim().length > 0
+      ),
+      carryOutItems: (values.carryOutItems ?? []).filter(
+        (e) =>
+          (e.itemName ?? '').trim().length > 0 ||
+          (e.quantity ?? '').trim().length > 0
+      ),
+      meetingRecords: (values.meetingRecords ?? []).filter(
+        (e) =>
+          (e.partner ?? '').trim().length > 0 ||
+          (e.topic ?? '').trim().length > 0
+      ),
+      machineUsages: (values.machineUsages ?? []).filter(
+        (e) =>
+          (e.machineName ?? '').trim().length > 0 ||
+          (e.spec ?? '').trim().length > 0 ||
+          (e.operator ?? '').trim().length > 0 ||
+          (e.usageHours ?? '').trim().length > 0
+      ),
+      individualWorkTimes: (values.individualWorkTimes ?? []).filter(
+        (e) =>
+          (e.name ?? '').trim().length > 0 ||
+          (e.workContent ?? '').trim().length > 0
+      ),
+      materialDeliveries: (values.materialDeliveries ?? []).filter(
+        (e) =>
+          (e.materialName ?? '').trim().length > 0 ||
+          (e.quantity ?? '').trim().length > 0
+      ),
+    };
+    form.setValue('ownEmployees', next.ownEmployees, { shouldDirty: true });
+    form.setValue('receiveItems', next.receiveItems, { shouldDirty: true });
+    form.setValue('carryOutItems', next.carryOutItems, { shouldDirty: true });
+    form.setValue('meetingRecords', next.meetingRecords, { shouldDirty: true });
+    form.setValue('machineUsages', next.machineUsages, { shouldDirty: true });
+    form.setValue('individualWorkTimes', next.individualWorkTimes, {
+      shouldDirty: true,
+    });
+    form.setValue('materialDeliveries', next.materialDeliveries, {
+      shouldDirty: true,
+    });
+  }
+
   async function handlePreviewOpen() {
+    pruneEmptyArrays();
     const isValid = await form.trigger();
-    if (isValid) setShowPreview(true);
+    if (isValid) {
+      setShowPreview(true);
+      return;
+    }
+    // 失敗時はユーザーにフィードバック + 最初のエラー要素にスクロール
+    const errors = form.formState.errors;
+    const firstKey = Object.keys(errors)[0];
+    if (firstKey) {
+      const el = document.querySelector(`[name="${firstKey}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    toast.error('未入力または不正な項目があります。フォームをご確認ください。');
   }
 
   return (

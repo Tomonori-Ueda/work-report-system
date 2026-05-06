@@ -66,8 +66,8 @@ export function PendingReportsTable({ reports }: PendingReportsTableProps) {
         toast.warning(`${result.failedIds.length}件は承認できませんでした`);
       }
       setSelectedIds(new Set());
-    } catch {
-      toast.error('一括承認に失敗しました');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '一括承認に失敗しました');
     }
   }
 

@@ -92,8 +92,8 @@ export function DailySlideApproval() {
         pieces.push(`${result.failedIds.length}件は押印できませんでした`);
       }
       toast.success(pieces.join(' / '));
-    } catch {
-      toast.error('一括押印に失敗しました');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '一括押印に失敗しました');
     }
   }
 

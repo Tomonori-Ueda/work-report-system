@@ -79,6 +79,21 @@ export function useCreateReport() {
   });
 }
 
+/**
+ * APIエラーレスポンスからユーザー向けメッセージを抽出する。
+ * 4枠承認の `APPROVAL_ORDER_VIOLATION` / `CANCEL_BLOCKED` などを画面に出すため。
+ */
+async function extractApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const json = (await res.json()) as { error?: string; message?: string };
+    if (json.message) return json.message;
+    if (json.error) return json.error;
+  } catch {
+    // ignore JSON parse error
+  }
+  return fallback;
+}
+
 /** 日報を一括承認 */
 export function useBulkApprove() {
   const queryClient = useQueryClient();
@@ -91,7 +106,10 @@ export function useBulkApprove() {
         headers,
         body: JSON.stringify({ reportIds }),
       });
-      if (!res.ok) throw new Error('一括承認に失敗しました');
+      if (!res.ok) {
+        const msg = await extractApiError(res, '一括承認に失敗しました');
+        throw new Error(msg);
+      }
       const json = (await res.json()) as ApiSuccessResponse<BulkApproveResponse>;
       return json.data;
     },
@@ -115,7 +133,33 @@ export function useApproveReport() {
         method: 'PUT',
         headers,
       });
-      if (!res.ok) throw new Error('承認に失敗しました');
+      if (!res.ok) {
+        const msg = await extractApiError(res, '承認に失敗しました');
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+/** 日報の押印を取り消す（自分の slot のみ） */
+export function useCancelApproval() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (reportId: string): Promise<void> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/reports/${reportId}/approve`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const msg = await extractApiError(res, '取消に失敗しました');
+        throw new Error(msg);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
@@ -142,7 +186,10 @@ export function useRejectReport() {
         headers,
         body: JSON.stringify({ rejectReason }),
       });
-      if (!res.ok) throw new Error('差し戻しに失敗しました');
+      if (!res.ok) {
+        const msg = await extractApiError(res, '差し戻しに失敗しました');
+        throw new Error(msg);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
@@ -165,7 +212,10 @@ export function useSupervisorConfirm() {
         method: 'PUT',
         headers,
       });
-      if (!res.ok) throw new Error('確認処理に失敗しました');
+      if (!res.ok) {
+        const msg = await extractApiError(res, '確認処理に失敗しました');
+        throw new Error(msg);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
@@ -188,7 +238,10 @@ export function useManagerCheck() {
         method: 'PUT',
         headers,
       });
-      if (!res.ok) throw new Error('チェック処理に失敗しました');
+      if (!res.ok) {
+        const msg = await extractApiError(res, 'チェック処理に失敗しました');
+        throw new Error(msg);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
