@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -44,11 +43,16 @@ import { formatDateToISO } from '@/lib/utils/date';
 import {
   WEATHER,
   EXPENSE_CATEGORY,
+  CARRY_OUT_CATEGORY,
+  MACHINE_OWNERSHIP,
+  TRADE_TYPES,
+  TRADE_LABELS,
   createEmptyProcessInspection,
   type Weather,
   type ExpenseCategory,
   type FieldReport,
   type ProcessInspection,
+  type TradeType,
 } from '@/types/field-report';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -223,6 +227,15 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
       workTimeStart: defaultReport?.workTimeStart ?? '',
       processInspection: defaultReport?.processInspection ?? createEmptyProcessInspection(),
       ownEmployees: defaultReport?.ownEmployees ?? [],
+      // === Phase 4 拡張: 様式7.5-9-02 の残り入力欄 ===
+      receiveItems: defaultReport?.receiveItems ?? [],
+      carryOutItems: defaultReport?.carryOutItems ?? [],
+      meetingRecords: defaultReport?.meetingRecords ?? [],
+      machineUsages: defaultReport?.machineUsages ?? [],
+      individualWorkTimes: defaultReport?.individualWorkTimes ?? [],
+      tradeWorkers: defaultReport?.tradeWorkers ?? {},
+      laborHoursToday: defaultReport?.laborHoursToday ?? undefined,
+      laborHoursCumulative: defaultReport?.laborHoursCumulative ?? undefined,
     },
   });
 
@@ -253,6 +266,37 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
     name: 'ownEmployees',
   });
 
+  // Phase 4 追加セクション
+  const {
+    fields: receiveItemFields,
+    append: appendReceiveItem,
+    remove: removeReceiveItem,
+  } = useFieldArray({ control: form.control, name: 'receiveItems' });
+
+  const {
+    fields: carryOutFields,
+    append: appendCarryOut,
+    remove: removeCarryOut,
+  } = useFieldArray({ control: form.control, name: 'carryOutItems' });
+
+  const {
+    fields: meetingFields,
+    append: appendMeeting,
+    remove: removeMeeting,
+  } = useFieldArray({ control: form.control, name: 'meetingRecords' });
+
+  const {
+    fields: machineFields,
+    append: appendMachine,
+    remove: removeMachine,
+  } = useFieldArray({ control: form.control, name: 'machineUsages' });
+
+  const {
+    fields: individualWorkFields,
+    append: appendIndividualWork,
+    remove: removeIndividualWork,
+  } = useFieldArray({ control: form.control, name: 'individualWorkTimes' });
+
   // 合計人数をリアルタイム計算
   const watchedWorks = form.watch('subcontractorWorks');
   const totalWorkerCount = watchedWorks.reduce(
@@ -261,10 +305,36 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
   );
 
   async function handleSubmit(values: CreateFieldReportFormValues) {
-    // 動的セクションの空行を除去してから保存する。
-    // 「行を追加」だけ押して埋めずに残した行は明らかに送信不要。
-    const cleaned: CreateFieldReportFormValues = {
-      ...values,
+    try {
+      if (reportId) {
+        await updateFieldReport.mutateAsync({ id: reportId, data: values });
+        toast.success('現場日報を更新しました');
+      } else {
+        await createFieldReport.mutateAsync(values);
+        toast.success('現場日報を保存しました');
+      }
+      router.push('/field-report/history');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : '現場日報の保存に失敗しました'
+      );
+    }
+  }
+
+  const isSubmitting = form.formState.isSubmitting;
+  const previewValues = form.watch();
+
+  /**
+   * 動的セクション（自社作業員・受入先・持ち出し品・打合せ・使用機器・個人勤務時間）で
+   * ユーザーが「行を追加」だけして埋めずに残した空行を、検証前に削除する。
+   *
+   * Why: 空行を残したまま「内容を確認する」を押すと displayName 等の必須エラーで
+   *      trigger() が失敗し、UIには反応がないように見えてしまう。
+   *      空行は明らかに送信不要なので自動で除去する。
+   */
+  function pruneEmptyArrays(): void {
+    const values = form.getValues();
+    const next = {
       ownEmployees: (values.ownEmployees ?? []).filter(
         (e) => (e.displayName ?? '').trim().length > 0
       ),
@@ -303,37 +373,34 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
           (e.quantity ?? '').trim().length > 0
       ),
     };
-    try {
-      if (reportId) {
-        await updateFieldReport.mutateAsync({ id: reportId, data: cleaned });
-        toast.success('現場日報を更新しました');
-      } else {
-        await createFieldReport.mutateAsync(cleaned);
-        toast.success('現場日報を保存しました');
-      }
-      router.push('/field-report/history');
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : '現場日報の保存に失敗しました'
-      );
-    }
+    form.setValue('ownEmployees', next.ownEmployees, { shouldDirty: true });
+    form.setValue('receiveItems', next.receiveItems, { shouldDirty: true });
+    form.setValue('carryOutItems', next.carryOutItems, { shouldDirty: true });
+    form.setValue('meetingRecords', next.meetingRecords, { shouldDirty: true });
+    form.setValue('machineUsages', next.machineUsages, { shouldDirty: true });
+    form.setValue('individualWorkTimes', next.individualWorkTimes, {
+      shouldDirty: true,
+    });
+    form.setValue('materialDeliveries', next.materialDeliveries, {
+      shouldDirty: true,
+    });
   }
 
-  const isSubmitting = form.formState.isSubmitting;
-  const previewValues = form.watch();
-
-  /**
-   * 「内容を確認する」を押下したらプレビューを必ず開く。
-   *
-   * Why: 旧実装は trigger() で全フィールド検証してから開いていたが、
-   *      自社作業員等で「行を追加」だけ押して空行が残ったケースで
-   *      検証エラーになり UI が無反応に見える事故が発生した。
-   *      プレビューは見るだけの画面なので開く側は無検証で OK。
-   *      実検証は「保存する」ボタン側の form.handleSubmit が行う。
-   *      送信前は handleSubmit 内で空行を自動除去する。
-   */
-  function handlePreviewOpen() {
-    setShowPreview(true);
+  async function handlePreviewOpen() {
+    pruneEmptyArrays();
+    const isValid = await form.trigger();
+    if (isValid) {
+      setShowPreview(true);
+      return;
+    }
+    // 失敗時はユーザーにフィードバック + 最初のエラー要素にスクロール
+    const errors = form.formState.errors;
+    const firstKey = Object.keys(errors)[0];
+    if (firstKey) {
+      const el = document.querySelector(`[name="${firstKey}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    toast.error('未入力または不正な項目があります。フォームをご確認ください。');
   }
 
   return (
@@ -460,6 +527,102 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
         {/* 現場名 */}
         <SiteField form={form} sites={sites} />
 
+        {/* 様式7.5-9-02 ヘッダ情報 */}
+        <Card className="border-dashed">
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <p className="text-sm font-medium text-muted-foreground">
+              様式7.5-9-02 ヘッダ情報（任意）
+            </p>
+            <FormField
+              control={form.control}
+              name="projectName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>工事名</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="例: (軽井沢)小峯様別荘新築工事"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="siteResponsible"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>現場責任者</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="例: 小林 紀之"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="supervisorWorkStart"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>監督勤務開始</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="time"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="supervisorWorkEnd"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>監督勤務終了</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="time"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="workTimeStart"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>作業時間 開始</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="time"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
         {/* 協力会社セクション */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -503,6 +666,592 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
             </p>
           )}
         </div>
+
+        {/* 自社作業員セクション（人名単位） */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">自社作業員（人名単位・任意）</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] px-4"
+              onClick={() => appendOwnEmployee(createDefaultOwnEmployee())}
+            >
+              <PlusCircle className="h-4 w-4 mr-1" />
+              行を追加
+            </Button>
+          </div>
+          {ownEmployeeFields.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
+              自社（直営）作業員を入れた場合は氏名を追加してください
+            </p>
+          )}
+          {ownEmployeeFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    自社作業員 {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeOwnEmployee(index)}
+                    className="h-11 w-11 text-muted-foreground hover:text-destructive"
+                    aria-label={`自社作業員 ${index + 1} を削除`}
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                </div>
+                <FormField
+                  control={form.control}
+                  name={`ownEmployees.${index}.displayName`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>氏名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 田中 太郎" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`ownEmployees.${index}.workContent`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>作業内容</FormLabel>
+                      <FormControl>
+                        <Input placeholder="作業内容" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`ownEmployees.${index}.startTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>開始（任意）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="time"
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`ownEmployees.${index}.endTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>終了（任意）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="time"
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* 工程内検査セクション */}
+        <Card className="border-dashed">
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <p className="text-sm font-medium">工程内検査（任意）</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {PROCESS_INSPECTION_ITEMS.map(([key, label]) => (
+                <FormField
+                  key={key}
+                  control={form.control}
+                  name={`processInspection.${key}`}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={Boolean(field.value)}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel className="text-sm font-normal cursor-pointer">
+                        {label}
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+              ))}
+            </div>
+            <FormField
+              control={form.control}
+              name="processInspection.notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>指摘・是正事項</FormLabel>
+                  <FormControl>
+                    <Textarea rows={2} {...field} value={field.value ?? ''} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        {/* 受入先（外注工事含む） */}
+        <DynamicSection
+          title="受入先（外注工事含む・任意）"
+          fieldsLength={receiveItemFields.length}
+          onAdd={() =>
+            appendReceiveItem({ receiver: '', itemName: '', quantity: '', unit: '' })
+          }
+          emptyText="受入があれば行を追加してください"
+        >
+          {receiveItemFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <RowHeader
+                  label={`受入先 ${index + 1}`}
+                  onDelete={() => removeReceiveItem(index)}
+                />
+                <FormField
+                  control={form.control}
+                  name={`receiveItems.${index}.receiver`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>受入先</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: ㈱カネト" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`receiveItems.${index}.itemName`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>品名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: ガラス" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`receiveItems.${index}.quantity`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>数量</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例: 1" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`receiveItems.${index}.unit`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>単位</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例: 式" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </DynamicSection>
+
+        {/* 持ち出し品 */}
+        <DynamicSection
+          title="持ち出し品（任意）"
+          fieldsLength={carryOutFields.length}
+          onAdd={() =>
+            appendCarryOut({
+              itemName: '',
+              quantity: '',
+              category: CARRY_OUT_CATEGORY.BORROW,
+            })
+          }
+          emptyText="会社資材・機材・備品の持ち出しがあれば行を追加してください"
+        >
+          {carryOutFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <RowHeader
+                  label={`持ち出し品 ${index + 1}`}
+                  onDelete={() => removeCarryOut(index)}
+                />
+                <FormField
+                  control={form.control}
+                  name={`carryOutItems.${index}.itemName`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>名称</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 電動ドリル" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`carryOutItems.${index}.quantity`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>数量</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例: 1台" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`carryOutItems.${index}.category`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>区分</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={CARRY_OUT_CATEGORY.BORROW}>借入</SelectItem>
+                            <SelectItem value={CARRY_OUT_CATEGORY.RETURN}>返却</SelectItem>
+                            <SelectItem value={CARRY_OUT_CATEGORY.CONSUME}>消却</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </DynamicSection>
+
+        {/* 打合せ記録 */}
+        <DynamicSection
+          title="打合せ記録（任意）"
+          fieldsLength={meetingFields.length}
+          onAdd={() => appendMeeting({ partner: '', topic: '' })}
+          emptyText="打合せがあれば行を追加してください"
+        >
+          {meetingFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <RowHeader
+                  label={`打合せ ${index + 1}`}
+                  onDelete={() => removeMeeting(index)}
+                />
+                <FormField
+                  control={form.control}
+                  name={`meetingRecords.${index}.partner`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>相手先</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 建主" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name={`meetingRecords.${index}.topic`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>項目・対策</FormLabel>
+                      <FormControl>
+                        <Textarea rows={2} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          ))}
+        </DynamicSection>
+
+        {/* 使用機器 */}
+        <DynamicSection
+          title="使用機器（任意）"
+          fieldsLength={machineFields.length}
+          onAdd={() =>
+            appendMachine({
+              machineName: '',
+              ownership: MACHINE_OWNERSHIP.OWN,
+              spec: '',
+              operator: '',
+              usageHours: '',
+            })
+          }
+          emptyText="使用機器があれば行を追加してください"
+        >
+          {machineFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <RowHeader
+                  label={`使用機器 ${index + 1}`}
+                  onDelete={() => removeMachine(index)}
+                />
+                <FormField
+                  control={form.control}
+                  name={`machineUsages.${index}.machineName`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>機械名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: クレーン" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`machineUsages.${index}.ownership`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>自社/リース</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={MACHINE_OWNERSHIP.OWN}>自社</SelectItem>
+                            <SelectItem value={MACHINE_OWNERSHIP.LEASE}>リース</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`machineUsages.${index}.spec`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>規格</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例: 4t" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`machineUsages.${index}.operator`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>運転者名</FormLabel>
+                        <FormControl>
+                          <Input placeholder="運転者名" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`machineUsages.${index}.usageHours`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>使用時間（h）</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例: 4" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </DynamicSection>
+
+        {/* 個人勤務時間 */}
+        <DynamicSection
+          title="個人勤務時間（任意）"
+          fieldsLength={individualWorkFields.length}
+          onAdd={() =>
+            appendIndividualWork({
+              name: '',
+              startTime: '',
+              endTime: '',
+              workContent: '',
+            })
+          }
+          emptyText="個人別の勤務時間を入れたい場合は行を追加してください"
+        >
+          {individualWorkFields.map((field, index) => (
+            <Card key={field.id} className="border border-border">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <RowHeader
+                  label={`個人勤務 ${index + 1}`}
+                  onDelete={() => removeIndividualWork(index)}
+                />
+                <FormField
+                  control={form.control}
+                  name={`individualWorkTimes.${index}.name`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>氏名</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 小林 紀之" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name={`individualWorkTimes.${index}.startTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>開始</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`individualWorkTimes.${index}.endTime`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>終了</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name={`individualWorkTimes.${index}.workContent`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>業務内容</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例: 現場管理" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          ))}
+        </DynamicSection>
+
+        {/* 職種別稼動人員（27項目） */}
+        <TradeWorkersSection form={form} />
+
+        {/* 労働時間累計 */}
+        <Card className="border-dashed">
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <p className="text-sm font-medium">労働時間累計（任意）</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="laborHoursToday"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>労働本日時間</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        inputMode="decimal"
+                        placeholder="例: 104"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          field.onChange(v === '' ? undefined : Number(v));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="laborHoursCumulative"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>労働延時間 累計</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        inputMode="decimal"
+                        placeholder="例: 6248"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          field.onChange(v === '' ? undefined : Number(v));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* 資材搬入セクション */}
         <div className="space-y-3">
@@ -560,7 +1309,7 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
           type="button"
           className="w-full min-h-[48px] text-base"
           disabled={isSubmitting}
-          onClick={handlePreviewOpen}
+          onClick={() => void handlePreviewOpen()}
         >
           {isSubmitting ? '保存中...' : '内容を確認する'}
         </Button>
@@ -891,6 +1640,36 @@ function SubcontractorWorkRow({
             {form.formState.errors.subcontractorWorks[index].endTime?.message}
           </p>
         )}
+
+        {/* 作業員氏名（カンマまたは改行区切り。Phase 3 名寄せ用） */}
+        <FormField
+          control={form.control}
+          name={`subcontractorWorks.${index}.workerNames`}
+          render={({ field }) => {
+            const valueArr = (field.value as string[] | undefined) ?? [];
+            const text = valueArr.join('\n');
+            return (
+              <FormItem>
+                <FormLabel>作業員氏名（任意・改行区切り）</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="例：山田 太郎&#10;佐藤 次郎"
+                    rows={2}
+                    value={text}
+                    onChange={(e) => {
+                      const names = e.target.value
+                        .split(/[\n,、]/)
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0);
+                      field.onChange(names);
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
+        />
       </CardContent>
     </Card>
   );
@@ -956,5 +1735,176 @@ function MaterialDeliveryRow({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * 動的にカード行を追加できるセクションのラッパー。
+ * Phase 4 で追加した受入先・持ち出し品・打合せ・使用機器・個人勤務時間を共通化する。
+ */
+function DynamicSection({
+  title,
+  fieldsLength,
+  onAdd,
+  emptyText,
+  children,
+}: {
+  title: string;
+  fieldsLength: number;
+  onAdd: () => void;
+  emptyText: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">{title}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] px-4"
+          onClick={onAdd}
+        >
+          <PlusCircle className="h-4 w-4 mr-1" />
+          行を追加
+        </Button>
+      </div>
+      {fieldsLength === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
+          {emptyText}
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+/** 行カードのヘッダ（ラベル + 削除ボタン）。共通化用。 */
+function RowHeader({
+  label,
+  onDelete,
+}: {
+  label: string;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={onDelete}
+        className="h-11 w-11 text-muted-foreground hover:text-destructive"
+        aria-label={`${label} を削除`}
+      >
+        <Trash2 className="h-5 w-5" />
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * 職種別稼動人員 27項目の入力セクション。
+ * tradeWorkers は Record 型なので useFieldArray は使えず、各職種ごとに
+ * Controller (FormField) で 本日/累計 の2フィールドを直接バインドする。
+ *
+ * UX 配慮: 27 行を一覧表示するとフォームが長くなりすぎるので、
+ * 折りたたみ可能（details/summary）にして、入力済みの職種数を見出しに表示する。
+ */
+function TradeWorkersSection({
+  form,
+}: {
+  form: ReturnType<typeof useForm<CreateFieldReportFormValues>>;
+}) {
+  const watched = form.watch('tradeWorkers');
+  const enteredCount = TRADE_TYPES.reduce((acc, t) => {
+    const v = watched?.[t];
+    if (v && (v.today > 0 || v.cumulative > 0)) return acc + 1;
+    return acc;
+  }, 0);
+
+  return (
+    <details className="rounded-lg border border-dashed">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium flex items-center justify-between">
+        <span>職種別稼動人員（27職種・任意）</span>
+        <span className="text-xs text-muted-foreground">
+          {enteredCount > 0 ? `${enteredCount} 職種入力済み` : '展開して入力'}
+        </span>
+      </summary>
+      <div className="px-4 pb-4 grid gap-2 sm:grid-cols-2">
+        {TRADE_TYPES.map((trade) => (
+          <TradeWorkerRow key={trade} form={form} trade={trade} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function TradeWorkerRow({
+  form,
+  trade,
+}: {
+  form: ReturnType<typeof useForm<CreateFieldReportFormValues>>;
+  trade: TradeType;
+}) {
+  const value = form.watch(`tradeWorkers.${trade}`);
+  const today = value?.today;
+  const cumulative = value?.cumulative;
+
+  function update(next: { today?: number; cumulative?: number }) {
+    const merged = {
+      today: next.today ?? today ?? 0,
+      cumulative: next.cumulative ?? cumulative ?? 0,
+    };
+    // zod の record() 推論型と setValue の期待型のズレを回避するためキャストする。
+    // 実体は Partial<Record<TradeType, ...>>。空キーは省略する運用。
+    type TradeFormMap = NonNullable<CreateFieldReportFormValues['tradeWorkers']>;
+    const current = (form.getValues('tradeWorkers') ?? {}) as TradeFormMap &
+      Record<string, { today: number; cumulative: number }>;
+    if (merged.today === 0 && merged.cumulative === 0) {
+      const { [trade]: _omit, ...rest } = current;
+      void _omit;
+      form.setValue('tradeWorkers', rest as TradeFormMap, { shouldDirty: true });
+    } else {
+      const nextMap = { ...current, [trade]: merged } as TradeFormMap;
+      form.setValue('tradeWorkers', nextMap, { shouldDirty: true });
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 items-center">
+      <span className="text-sm">{TRADE_LABELS[trade]}</span>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.5"
+        placeholder="本日"
+        value={today ?? ''}
+        onChange={(e) =>
+          update({ today: e.target.value === '' ? 0 : Number(e.target.value) })
+        }
+        className="h-9"
+        aria-label={`${TRADE_LABELS[trade]} 本日`}
+      />
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.5"
+        placeholder="累計"
+        value={cumulative ?? ''}
+        onChange={(e) =>
+          update({
+            cumulative: e.target.value === '' ? 0 : Number(e.target.value),
+          })
+        }
+        className="h-9"
+        aria-label={`${TRADE_LABELS[trade]} 累計`}
+      />
+    </div>
   );
 }
