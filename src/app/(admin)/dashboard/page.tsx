@@ -68,13 +68,16 @@ export default function DashboardPage() {
     (supervisorConfirmedReports?.length ?? 0) +
     (managerCheckedReports?.length ?? 0);
 
-  // A_special/B は閲覧専用バナーを表示するか
-  const isReadOnlyRole =
-    userRole === USER_ROLE.A_SPECIAL || userRole === USER_ROLE.B;
+  // A_special のみ閲覧専用（4枠承認に参加しない）。
+  // Phase 1 で B（施工部長）は 4枠承認の最初の押印者になったため、閲覧専用ではない。
+  const isReadOnlyRole = userRole === USER_ROLE.A_SPECIAL;
 
-  // S/A は承認操作可能
+  // 4枠承認に参加するロール（押印可能）= S / A / B
+  // 一括承認・承認待ち日報タブはこの判定で表示する。
   const canApproveRole =
-    userRole === USER_ROLE.S || userRole === USER_ROLE.A;
+    userRole === USER_ROLE.S ||
+    userRole === USER_ROLE.A ||
+    userRole === USER_ROLE.B;
 
   return (
     <div className="space-y-6">
