@@ -153,8 +153,12 @@ const tradeWorkerEntrySchema = z.object({
   cumulative: z.number().int().min(0).max(99999),
 });
 
+// 各エントリ自体を optional にする。
+// Why: zod 4 の `z.record(enum, schema)` は「全キー必須」と解釈されるため、
+//      入力されていない職種があると `expected object, received undefined` で
+//      400 エラーになり Phase 2/4 全フィールドが API で破棄されていた。
 export const tradeWorkersSchema = z
-  .record(z.enum(TRADE_TYPES), tradeWorkerEntrySchema)
+  .record(z.enum(TRADE_TYPES), tradeWorkerEntrySchema.optional())
   .optional();
 
 /** 現場日報作成スキーマ（Phase 2 拡張版） */
