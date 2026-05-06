@@ -157,9 +157,30 @@ const tradeWorkerEntrySchema = z.object({
 // Why: zod 4 の `z.record(enum, schema)` は「全キー必須」と解釈されるため、
 //      入力されていない職種があると `expected object, received undefined` で
 //      400 エラーになり Phase 2/4 全フィールドが API で破棄されていた。
+// NOTE: zod 4 + record + optional 値の出力は「全27キー（一部値が undefined）」になる。
+//       Firestore Admin SDK は undefined を拒否するため、保存前に
+//       API 側で `pruneUndefinedTradeWorkers` を通す必要がある（Resolver 互換性
+//       の都合で transform をスキーマに含められないため）。
 export const tradeWorkersSchema = z
   .record(z.enum(TRADE_TYPES), tradeWorkerEntrySchema.optional())
   .optional();
+
+/**
+ * tradeWorkers から undefined 値のキーを除去する。
+ * Why: zod 4 の record + optional の出力には全 27 キー（うち一部 undefined）が
+ *      含まれてしまう。これをそのまま Firestore に書くと
+ *      `Cannot use "undefined" as a Firestore value` で 500 になる。
+ */
+export function pruneUndefinedTradeWorkers<
+  T extends Partial<Record<string, { today: number; cumulative: number } | undefined>>,
+>(value: T | undefined): Partial<Record<string, { today: number; cumulative: number }>> | undefined {
+  if (!value) return value;
+  const cleaned: Record<string, { today: number; cumulative: number }> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) cleaned[key] = entry;
+  }
+  return cleaned;
+}
 
 /** 現場日報作成スキーマ（Phase 2 拡張版） */
 export const createFieldReportSchema = z.object({

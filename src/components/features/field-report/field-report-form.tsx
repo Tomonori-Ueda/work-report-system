@@ -458,7 +458,24 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
             修正する
           </Button>
           <Button
-            onClick={() => {
+            onClick={async () => {
+              // 検証 → 失敗ならエラートーストを出してプレビューに留まる
+              const isValid = await form.trigger();
+              if (!isValid) {
+                const errors = form.formState.errors;
+                const firstKey = Object.keys(errors)[0];
+                if (firstKey) {
+                  setShowPreview(false);
+                  setTimeout(() => {
+                    const el = document.querySelector(`[name="${firstKey}"]`);
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 200);
+                }
+                toast.error(
+                  '未入力または不正な項目があります。フォームをご確認ください。'
+                );
+                return;
+              }
               setShowPreview(false);
               void form.handleSubmit(handleSubmit)();
             }}

@@ -12,7 +12,10 @@ import {
   serverErrorResponse,
   errorResponse,
 } from '@/lib/utils/api-response';
-import { createFieldReportSchema } from '@/lib/validations/field-report';
+import {
+  createFieldReportSchema,
+  pruneUndefinedTradeWorkers,
+} from '@/lib/validations/field-report';
 import { isAdminRole, isSupervisor, canApprove } from '@/types/user';
 
 interface RouteParams {
@@ -163,7 +166,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       ...(machineUsages !== undefined && { machineUsages }),
       ...(individualWorkTimes !== undefined && { individualWorkTimes }),
       ...(ownEmployees !== undefined && { ownEmployees }),
-      ...(tradeWorkers !== undefined && { tradeWorkers }),
+      ...(tradeWorkers !== undefined && {
+        tradeWorkers: pruneUndefinedTradeWorkers(tradeWorkers),
+      }),
       ...(laborHoursToday !== undefined && { laborHoursToday }),
       ...(laborHoursCumulative !== undefined && { laborHoursCumulative }),
       updatedAt: FieldValue.serverTimestamp(),

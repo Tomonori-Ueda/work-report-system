@@ -11,7 +11,10 @@ import {
   serverErrorResponse,
   errorResponse,
 } from '@/lib/utils/api-response';
-import { createFieldReportSchema } from '@/lib/validations/field-report';
+import {
+  createFieldReportSchema,
+  pruneUndefinedTradeWorkers,
+} from '@/lib/validations/field-report';
 import { isAdminRole, isSupervisor } from '@/types/user';
 
 /** GET /api/field-reports - 現場日報一覧を取得 */
@@ -171,7 +174,9 @@ export async function POST(request: NextRequest) {
       ...(machineUsages !== undefined && { machineUsages }),
       ...(individualWorkTimes !== undefined && { individualWorkTimes }),
       ...(ownEmployees !== undefined && { ownEmployees }),
-      ...(tradeWorkers !== undefined && { tradeWorkers }),
+      ...(tradeWorkers !== undefined && {
+        tradeWorkers: pruneUndefinedTradeWorkers(tradeWorkers),
+      }),
       ...(laborHoursToday !== undefined && { laborHoursToday }),
       ...(laborHoursCumulative !== undefined && { laborHoursCumulative }),
       createdAt: FieldValue.serverTimestamp(),
