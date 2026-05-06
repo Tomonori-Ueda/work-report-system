@@ -386,21 +386,15 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
     });
   }
 
-  async function handlePreviewOpen() {
+  /**
+   * 「内容を確認する」ボタンを押すと無条件にプレビューを開く。
+   * Why: 旧実装は trigger() が失敗するとプレビューを開かず、ユーザーには
+   *      無反応に見える事故が頻発した。プレビューは見るだけの画面なので
+   *      開く側は無検証で OK。実検証はプレビュー内「保存する」ボタンで実施する。
+   */
+  function handlePreviewOpen() {
     pruneEmptyArrays();
-    const isValid = await form.trigger();
-    if (isValid) {
-      setShowPreview(true);
-      return;
-    }
-    // 失敗時はユーザーにフィードバック + 最初のエラー要素にスクロール
-    const errors = form.formState.errors;
-    const firstKey = Object.keys(errors)[0];
-    if (firstKey) {
-      const el = document.querySelector(`[name="${firstKey}"]`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    toast.error('未入力または不正な項目があります。フォームをご確認ください。');
+    setShowPreview(true);
   }
 
   return (
