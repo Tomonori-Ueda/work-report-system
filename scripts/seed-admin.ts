@@ -64,9 +64,9 @@ const ACCOUNTS: Account[] = [
     hireDate: '2005-04-01',
     monthlySalary: 600000,
   },
-  // 常務（A）
+  // 常務（A）— 既存ユーザー jomu@ を常務として運用
   {
-    email: 'managing-director@daishin.test',
+    email: 'jomu@daishin.test',
     password: 'Test1234!',
     displayName: '常務 テスト',
     role: 'A',
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
   console.log('【管理者系】');
   console.log('  社長（S）          : president@daishin.test          / Test1234!');
   console.log('  専務（A・executive）: director@daishin.test           / Test1234!');
-  console.log('  常務（A・managing） : managing-director@daishin.test  / Test1234!');
+  console.log('  常務（A・managing） : jomu@daishin.test               / Test1234!');
   console.log('  総務部長（A_special）: general-affairs@daishin.test    / Test1234!');
   console.log('  施工部長（B）       : construction-manager@daishin.test / Test1234!');
   console.log('');

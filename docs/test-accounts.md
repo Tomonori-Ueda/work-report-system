@@ -8,7 +8,7 @@
 |--------|-------------|------|----------------|------------|------|
 | S（社長） | president | 社長 テスト | president@daishin.test | Test1234! | 全閲覧・全承認・最終承認 |
 | A（専務） | executive | 専務 テスト | director@daishin.test | Test1234! | 全閲覧・承認（4枠承認の専務枠） |
-| A（常務） | managing | 常務 テスト | managing-director@daishin.test | Test1234! | 全閲覧・承認（4枠承認の常務枠） |
+| A（常務） | managing | 常務 テスト | jomu@daishin.test | Test1234! | 全閲覧・承認（4枠承認の常務枠） |
 | A_special（総務部長） | — | 総務部長 テスト | general-affairs@daishin.test | Test1234! | 全閲覧のみ・給与管理 |
 | B（施工部長） | construction_manager | 施工部長 テスト | construction-manager@daishin.test | Test1234! | 日報閲覧・チェック（4枠承認の施工部長枠） |
 
