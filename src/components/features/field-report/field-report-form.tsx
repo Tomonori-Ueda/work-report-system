@@ -37,6 +37,7 @@ import { useCreateFieldReport, useUpdateFieldReport } from '@/hooks/use-field-re
 import { getIdToken } from '@/lib/firebase/auth';
 import {
   createFieldReportSchema,
+  pruneUndefinedTradeWorkers,
   type CreateFieldReportFormValues,
 } from '@/lib/validations/field-report';
 import { formatDateToISO } from '@/lib/utils/date';
@@ -305,12 +306,18 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
   );
 
   async function handleSubmit(values: CreateFieldReportFormValues) {
+    // tradeWorkers は本日/累計どちらか片方のみ入力されるケースがあるため、
+    // 保存前に正規化して両方 0/未入力のエントリを除去 + 欠けた側を 0 で補完。
+    const payload = {
+      ...values,
+      tradeWorkers: pruneUndefinedTradeWorkers(values.tradeWorkers),
+    };
     try {
       if (reportId) {
-        await updateFieldReport.mutateAsync({ id: reportId, data: values });
+        await updateFieldReport.mutateAsync({ id: reportId, data: payload });
         toast.success('現場日報を更新しました');
       } else {
-        await createFieldReport.mutateAsync(values);
+        await createFieldReport.mutateAsync(payload);
         toast.success('現場日報を保存しました');
       }
       router.push('/field-report/history');
@@ -1882,7 +1889,7 @@ function TradeWorkersSection({
   const watched = form.watch('tradeWorkers');
   const enteredCount = TRADE_TYPES.reduce((acc, t) => {
     const v = watched?.[t];
-    if (v && (v.today > 0 || v.cumulative > 0)) return acc + 1;
+    if (v && ((v.today ?? 0) > 0 || (v.cumulative ?? 0) > 0)) return acc + 1;
     return acc;
   }, 0);
 
@@ -1903,6 +1910,12 @@ function TradeWorkersSection({
   );
 }
 
+/**
+ * 職種別人員 1 行の入力。
+ * 本日・累計の 2 入力欄は独立した FormField でバインドし、片方の入力が
+ * もう片方の値を上書きしないようにする（旧実装は setValue で全体を毎回置換していた）。
+ * 「両方 0/未入力」のエントリは保存時に pruneUndefinedTradeWorkers が削除する。
+ */
 function TradeWorkerRow({
   form,
   trade,
@@ -1910,60 +1923,48 @@ function TradeWorkerRow({
   form: ReturnType<typeof useForm<CreateFieldReportFormValues>>;
   trade: TradeType;
 }) {
-  const value = form.watch(`tradeWorkers.${trade}`);
-  const today = value?.today;
-  const cumulative = value?.cumulative;
-
-  function update(next: { today?: number; cumulative?: number }) {
-    const merged = {
-      today: next.today ?? today ?? 0,
-      cumulative: next.cumulative ?? cumulative ?? 0,
-    };
-    // zod の record() 推論型と setValue の期待型のズレを回避するためキャストする。
-    // 実体は Partial<Record<TradeType, ...>>。空キーは省略する運用。
-    type TradeFormMap = NonNullable<CreateFieldReportFormValues['tradeWorkers']>;
-    const current = (form.getValues('tradeWorkers') ?? {}) as TradeFormMap &
-      Record<string, { today: number; cumulative: number }>;
-    if (merged.today === 0 && merged.cumulative === 0) {
-      const { [trade]: _omit, ...rest } = current;
-      void _omit;
-      form.setValue('tradeWorkers', rest as TradeFormMap, { shouldDirty: true });
-    } else {
-      const nextMap = { ...current, [trade]: merged } as TradeFormMap;
-      form.setValue('tradeWorkers', nextMap, { shouldDirty: true });
-    }
-  }
-
   return (
     <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 items-center">
       <span className="text-sm">{TRADE_LABELS[trade]}</span>
-      <Input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="0.5"
-        placeholder="本日"
-        value={today ?? ''}
-        onChange={(e) =>
-          update({ today: e.target.value === '' ? 0 : Number(e.target.value) })
-        }
-        className="h-9"
-        aria-label={`${TRADE_LABELS[trade]} 本日`}
+      <FormField
+        control={form.control}
+        name={`tradeWorkers.${trade}.today`}
+        render={({ field }) => (
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step="1"
+            placeholder="本日"
+            value={field.value ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              field.onChange(v === '' ? undefined : Number(v));
+            }}
+            className="h-9"
+            aria-label={`${TRADE_LABELS[trade]} 本日`}
+          />
+        )}
       />
-      <Input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="0.5"
-        placeholder="累計"
-        value={cumulative ?? ''}
-        onChange={(e) =>
-          update({
-            cumulative: e.target.value === '' ? 0 : Number(e.target.value),
-          })
-        }
-        className="h-9"
-        aria-label={`${TRADE_LABELS[trade]} 累計`}
+      <FormField
+        control={form.control}
+        name={`tradeWorkers.${trade}.cumulative`}
+        render={({ field }) => (
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step="1"
+            placeholder="累計"
+            value={field.value ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              field.onChange(v === '' ? undefined : Number(v));
+            }}
+            className="h-9"
+            aria-label={`${TRADE_LABELS[trade]} 累計`}
+          />
+        )}
       />
     </div>
   );

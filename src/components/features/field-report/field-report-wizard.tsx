@@ -33,6 +33,7 @@ import {
 import { getIdToken } from '@/lib/firebase/auth';
 import {
   createFieldReportSchema,
+  pruneUndefinedTradeWorkers,
   type CreateFieldReportFormValues,
 } from '@/lib/validations/field-report';
 import { formatDateToISO } from '@/lib/utils/date';
@@ -253,8 +254,12 @@ export function FieldReportWizard({
       return;
     }
     const values = form.getValues();
-    const cleaned: CreateFieldReportFormValues = {
+    // tradeWorkers は本日/累計どちらか片方のみ入力されるケースがあるため、
+    // 保存前に正規化して両方 0/未入力のエントリを除去 + 欠けた側を 0 で補完。
+    const normalizedTradeWorkers = pruneUndefinedTradeWorkers(values.tradeWorkers);
+    const cleaned = {
       ...values,
+      tradeWorkers: normalizedTradeWorkers,
       ownEmployees: (values.ownEmployees ?? []).filter(
         (e) => (e.displayName ?? '').trim().length > 0
       ),
@@ -1481,6 +1486,12 @@ function Step12Trade({ form }: WizardCtx) {
   );
 }
 
+/**
+ * 職種別人員 1 行の入力。
+ * 本日・累計の 2 入力欄は独立した FormField でバインドし、片方の入力が
+ * もう片方の値を上書きしないようにする（旧実装は setValue で全体を毎回置換していた）。
+ * 「両方 0/未入力」のエントリは保存時に pruneUndefinedTradeWorkers が削除する。
+ */
 function TradeRow({
   form,
   trade,
@@ -1488,55 +1499,44 @@ function TradeRow({
   form: ReturnType<typeof useForm<CreateFieldReportFormValues>>;
   trade: TradeType;
 }) {
-  const value = form.watch(`tradeWorkers.${trade}`);
-  const today = value?.today;
-  const cumulative = value?.cumulative;
-
-  function update(next: { today?: number; cumulative?: number }) {
-    const merged = {
-      today: next.today ?? today ?? 0,
-      cumulative: next.cumulative ?? cumulative ?? 0,
-    };
-    type TradeFormMap = NonNullable<CreateFieldReportFormValues['tradeWorkers']>;
-    const current = (form.getValues('tradeWorkers') ?? {}) as TradeFormMap &
-      Record<string, { today: number; cumulative: number }>;
-    if (merged.today === 0 && merged.cumulative === 0) {
-      const { [trade]: _omit, ...rest } = current;
-      void _omit;
-      form.setValue('tradeWorkers', rest as TradeFormMap, { shouldDirty: true });
-    } else {
-      form.setValue(
-        'tradeWorkers',
-        { ...current, [trade]: merged } as TradeFormMap,
-        { shouldDirty: true }
-      );
-    }
-  }
-
   return (
     <div className="grid grid-cols-[1fr_5rem_5rem] gap-2 items-center">
       <span className="text-sm">{TRADE_LABELS[trade]}</span>
-      <Input
-        type="number"
-        min={0}
-        placeholder="本日"
-        value={today ?? ''}
-        onChange={(e) =>
-          update({ today: e.target.value === '' ? 0 : Number(e.target.value) })
-        }
-        className="h-9"
+      <FormField
+        control={form.control}
+        name={`tradeWorkers.${trade}.today`}
+        render={({ field }) => (
+          <Input
+            type="number"
+            min={0}
+            placeholder="本日"
+            value={field.value ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              field.onChange(v === '' ? undefined : Number(v));
+            }}
+            className="h-9"
+            aria-label={`${TRADE_LABELS[trade]} 本日`}
+          />
+        )}
       />
-      <Input
-        type="number"
-        min={0}
-        placeholder="累計"
-        value={cumulative ?? ''}
-        onChange={(e) =>
-          update({
-            cumulative: e.target.value === '' ? 0 : Number(e.target.value),
-          })
-        }
-        className="h-9"
+      <FormField
+        control={form.control}
+        name={`tradeWorkers.${trade}.cumulative`}
+        render={({ field }) => (
+          <Input
+            type="number"
+            min={0}
+            placeholder="累計"
+            value={field.value ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              field.onChange(v === '' ? undefined : Number(v));
+            }}
+            className="h-9"
+            aria-label={`${TRADE_LABELS[trade]} 累計`}
+          />
+        )}
       />
     </div>
   );

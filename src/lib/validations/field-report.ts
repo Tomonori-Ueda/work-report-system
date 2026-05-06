@@ -154,13 +154,19 @@ export const ownEmployeeSchema = z.object({
   endTime: timeStringNullableSchema,
 });
 
-/** 職種別人員スキーマ（27職種を partial に許容） */
+/**
+ * 職種別人員エントリ（today / cumulative とも個別 optional）
+ * Why: 入力 UX を独立バインド方式にするため、片方だけ入力された途中状態も
+ *      RHF の resolver で受理できる必要がある。最終的に Firestore 書き込み前に
+ *      pruneUndefinedTradeWorkers が「両方 undefined / 両方 0」のエントリを削除し、
+ *      残ったエントリは欠けた側を 0 で埋める。
+ */
 const tradeWorkerEntrySchema = z.object({
-  today: z.number().int().min(0).max(999),
-  cumulative: z.number().int().min(0).max(99999),
+  today: z.number().int().min(0).max(999).optional(),
+  cumulative: z.number().int().min(0).max(99999).optional(),
 });
 
-// 各エントリ自体を optional にする。
+// 各エントリ自体も optional にする。
 // Why: zod 4 の `z.record(enum, schema)` は「全キー必須」と解釈されるため、
 //      入力されていない職種があると `expected object, received undefined` で
 //      400 エラーになり Phase 2/4 全フィールドが API で破棄されていた。
@@ -172,19 +178,36 @@ export const tradeWorkersSchema = z
   .record(z.enum(TRADE_TYPES), tradeWorkerEntrySchema.optional())
   .optional();
 
+/** 入力途中の片埋まりエントリ */
+type TradeWorkerEntryPartial = {
+  today?: number;
+  cumulative?: number;
+};
+
 /**
- * tradeWorkers から undefined 値のキーを除去する。
- * Why: zod 4 の record + optional の出力には全 27 キー（うち一部 undefined）が
- *      含まれてしまう。これをそのまま Firestore に書くと
- *      `Cannot use "undefined" as a Firestore value` で 500 になる。
+ * tradeWorkers を Firestore 書き込み形式（{today:number, cumulative:number}）に正規化する。
+ *
+ * - undefined 値のキーは除去（zod 4 の record + optional は全 27 キーを返すため）
+ * - 「today も cumulative も未入力」または「両方 0」のエントリは保存しない
+ * - 片方だけ入力されたエントリは、欠けた側を 0 で埋めて保存する
+ *
+ * Why:
+ *  - Firestore Admin SDK は undefined を弾く（Cannot use "undefined" as a Firestore value）
+ *  - エントリ型は最終的に {today:number, cumulative:number} に揃えたい
  */
-export function pruneUndefinedTradeWorkers<
-  T extends Partial<Record<string, { today: number; cumulative: number } | undefined>>,
->(value: T | undefined): Partial<Record<string, { today: number; cumulative: number }>> | undefined {
+export function pruneUndefinedTradeWorkers(
+  value:
+    | Partial<Record<string, TradeWorkerEntryPartial | undefined>>
+    | undefined,
+): Partial<Record<string, { today: number; cumulative: number }>> | undefined {
   if (!value) return value;
   const cleaned: Record<string, { today: number; cumulative: number }> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (entry !== undefined) cleaned[key] = entry;
+    if (entry === undefined) continue;
+    const today = entry.today ?? 0;
+    const cumulative = entry.cumulative ?? 0;
+    if (today === 0 && cumulative === 0) continue;
+    cleaned[key] = { today, cumulative };
   }
   return cleaned;
 }
