@@ -14,6 +14,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/features/report/status-badge';
+import { ApprovalsBadges } from '@/components/features/report/approvals-badges';
 import { useBulkApprove } from '@/hooks/use-reports';
 import { formatDateToJapanese } from '@/lib/utils/date';
 import type { DailyReportWithUser } from '@/types/report';
@@ -111,6 +112,7 @@ export function PendingReportsTable({ reports }: PendingReportsTableProps) {
             <TableHead>従業員</TableHead>
             <TableHead>勤務時間</TableHead>
             <TableHead>残業</TableHead>
+            <TableHead>承認状況</TableHead>
             <TableHead>ステータス</TableHead>
           </TableRow>
         </TableHeader>
@@ -140,6 +142,9 @@ export function PendingReportsTable({ reports }: PendingReportsTableProps) {
                   : `${report.startTime ?? '—'} 〜 ${report.endTime ?? '—'}`}
               </TableCell>
               <TableCell>{report.totalOvertimeHours}h</TableCell>
+              <TableCell>
+                <ApprovalsBadges approvals={report.approvals} />
+              </TableCell>
               <TableCell>
                 <StatusBadge status={report.status} />
               </TableCell>

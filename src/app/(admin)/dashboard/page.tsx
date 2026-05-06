@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SubmissionStats } from '@/components/features/dashboard/submission-stats';
 import { PendingReportsTable } from '@/components/features/dashboard/pending-reports-table';
+import { DailySlideApproval } from '@/components/features/dashboard/daily-slide-approval';
 import { getIdToken } from '@/lib/firebase/auth';
 import { queryKeys } from '@/lib/query/keys';
 import { formatDateToISO } from '@/lib/utils/date';
@@ -160,6 +161,7 @@ export default function DashboardPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="daily-slide">日次一括スライド</TabsTrigger>
           <TabsTrigger value="leaves">
             有給申請
             {pendingLeaves && pendingLeaves.length > 0 && (
@@ -182,6 +184,10 @@ export default function DashboardPage() {
           ) : (
             <p className="text-muted-foreground">読み込み中...</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="daily-slide" className="mt-4">
+          <DailySlideApproval />
         </TabsContent>
 
         <TabsContent value="leaves" className="mt-4">

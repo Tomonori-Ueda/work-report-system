@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import { EXECUTIVE_TITLE, type ExecutiveTitle } from './user';
 
 /** 時間ブロック（複数追加可能） */
 export interface TimeBlock {
@@ -42,6 +43,98 @@ export interface ApprovalRecord {
   approvedAt: Timestamp | null;
 }
 
+/**
+ * 4枠承認の押印エントリ。各 slot に1件ずつ。
+ * approvedAt はサーバータイムスタンプ。
+ */
+export interface ApprovalEntry {
+  uid: string;
+  displayName: string;
+  approvedAt: Timestamp;
+}
+
+/**
+ * 4枠承認のデータ構造。slot ごとに押印済みなら ApprovalEntry、未押印なら null。
+ */
+export interface ReportApprovals {
+  /** 施工部長（ロール B） */
+  construction_manager: ApprovalEntry | null;
+  /** 常務（ロール A + executiveTitle: managing） */
+  managing: ApprovalEntry | null;
+  /** 専務（ロール A + executiveTitle: executive） */
+  executive: ApprovalEntry | null;
+  /** 社長（ロール S） */
+  president: ApprovalEntry | null;
+}
+
+/**
+ * 4枠承認の固定順序。先頭から順に押印していく必要がある。
+ * 施工部長 → 常務 → 専務 → 社長
+ */
+export const APPROVAL_ORDER = [
+  EXECUTIVE_TITLE.CONSTRUCTION_MANAGER,
+  EXECUTIVE_TITLE.MANAGING,
+  EXECUTIVE_TITLE.EXECUTIVE,
+  EXECUTIVE_TITLE.PRESIDENT,
+] as const satisfies readonly ExecutiveTitle[];
+
+export type ApprovalSlot = (typeof APPROVAL_ORDER)[number];
+
+/** 空の approvals オブジェクトを生成（新規日報用） */
+export function createEmptyApprovals(): ReportApprovals {
+  return {
+    construction_manager: null,
+    managing: null,
+    executive: null,
+    president: null,
+  };
+}
+
+/**
+ * 指定 slot が「次に押印してよい」状態かを判定する。
+ * - 自分より前の slot がすべて押印済み
+ * - 自分の slot は未押印
+ *
+ * Why: 順序固定の承認フローで、上位職が先に押す/同時並行を防ぐ。
+ */
+export function canApproveSlot(
+  approvals: ReportApprovals,
+  slot: ApprovalSlot
+): boolean {
+  const idx = APPROVAL_ORDER.indexOf(slot);
+  if (idx < 0) return false;
+  for (let i = 0; i < idx; i++) {
+    const prev = APPROVAL_ORDER[i];
+    if (!prev) continue;
+    if (!approvals[prev]) return false;
+  }
+  return approvals[slot] === null;
+}
+
+/**
+ * 自分の slot を取消してよいかを判定する。
+ * 自分より後の slot に押印が入っていたら取消不可（後段の意味が変わるため）。
+ */
+export function canCancelSlot(
+  approvals: ReportApprovals,
+  slot: ApprovalSlot
+): boolean {
+  const idx = APPROVAL_ORDER.indexOf(slot);
+  if (idx < 0) return false;
+  if (approvals[slot] === null) return false;
+  for (let i = idx + 1; i < APPROVAL_ORDER.length; i++) {
+    const next = APPROVAL_ORDER[i];
+    if (!next) continue;
+    if (approvals[next]) return false;
+  }
+  return true;
+}
+
+/** 4枠すべて押印済みなら true */
+export function isFullyApproved(approvals: ReportApprovals): boolean {
+  return APPROVAL_ORDER.every((slot) => approvals[slot] !== null);
+}
+
 /** 日報ドキュメント型 */
 export interface DailyReport {
   id: string;
@@ -70,11 +163,17 @@ export interface DailyReport {
   /** チェックした施工部長UID */
   checkedBy: string | null;
   checkedAt: Timestamp | null;
-  /** 承認者UID */
+  /** 承認者UID（後方互換: 4枠承認の最終押印者 = 社長と同義） */
   approvedBy: string | null;
-  /** 承認者名 */
+  /** 承認者名（後方互換） */
   approvedByName: string | null;
   approvedAt: Timestamp | null;
+  /**
+   * 4枠承認の押印状況（施工部長→常務→専務→社長）。
+   * 全 slot 押印で status=approved に遷移する。
+   * 既存データには存在しないため optional。
+   */
+  approvals?: ReportApprovals;
   rejectReason: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;

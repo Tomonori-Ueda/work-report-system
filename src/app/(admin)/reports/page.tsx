@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/features/report/status-badge';
+import { ApprovalsBadges } from '@/components/features/report/approvals-badges';
 import { useReports } from '@/hooks/use-reports';
 import { formatDateToJapanese } from '@/lib/utils/date';
 import { REPORT_STATUS, type ReportStatus, type DailyReportWithUser } from '@/types/report';
@@ -211,6 +212,7 @@ export default function AdminReportsPage() {
                   <TableHead>勤務時間</TableHead>
                   <TableHead>所定</TableHead>
                   <TableHead>残業</TableHead>
+                  <TableHead>承認状況</TableHead>
                   <TableHead>ステータス</TableHead>
                 </TableRow>
               </TableHeader>
@@ -235,6 +237,9 @@ export default function AdminReportsPage() {
                     </TableCell>
                     <TableCell>{report.totalRegularHours}h</TableCell>
                     <TableCell>{report.totalOvertimeHours}h</TableCell>
+                    <TableCell>
+                      <ApprovalsBadges approvals={report.approvals} />
+                    </TableCell>
                     <TableCell>
                       <StatusBadge status={report.status} />
                     </TableCell>

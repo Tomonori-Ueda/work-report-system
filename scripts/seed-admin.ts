@@ -34,6 +34,8 @@ interface Account {
   password: string;
   displayName: string;
   role: string;
+  /** 4枠承認の役職タイトル（president / executive / managing / construction_manager） */
+  executiveTitle?: string | null;
   department: string;
   hireDate: string;
   monthlySalary: number;
@@ -46,6 +48,7 @@ const ACCOUNTS: Account[] = [
     password: 'Test1234!',
     displayName: '社長 テスト',
     role: 'S',
+    executiveTitle: 'president',
     department: '経営',
     hireDate: '2000-04-01',
     monthlySalary: 800000,
@@ -56,9 +59,21 @@ const ACCOUNTS: Account[] = [
     password: 'Test1234!',
     displayName: '専務 テスト',
     role: 'A',
+    executiveTitle: 'executive',
     department: '経営',
     hireDate: '2005-04-01',
     monthlySalary: 600000,
+  },
+  // 常務（A）
+  {
+    email: 'managing-director@daishin.test',
+    password: 'Test1234!',
+    displayName: '常務 テスト',
+    role: 'A',
+    executiveTitle: 'managing',
+    department: '経営',
+    hireDate: '2007-04-01',
+    monthlySalary: 580000,
   },
   // 総務部長（A_special）
   {
@@ -66,6 +81,7 @@ const ACCOUNTS: Account[] = [
     password: 'Test1234!',
     displayName: '総務部長 テスト',
     role: 'A_special',
+    executiveTitle: null,
     department: '総務',
     hireDate: '2010-04-01',
     monthlySalary: 450000,
@@ -76,6 +92,7 @@ const ACCOUNTS: Account[] = [
     password: 'Test1234!',
     displayName: '施工部長 テスト',
     role: 'B',
+    executiveTitle: 'construction_manager',
     department: '施工',
     hireDate: '2008-04-01',
     monthlySalary: 500000,
@@ -132,6 +149,7 @@ async function upsertAccount(account: Account): Promise<void> {
       email: account.email,
       displayName: account.displayName,
       role: account.role,
+      executiveTitle: account.executiveTitle ?? null,
       department: account.department,
       annualLeaveBalance: 10,
       hireDate: account.hireDate,
@@ -154,10 +172,11 @@ async function main(): Promise<void> {
   console.log('ログイン情報:');
   console.log('');
   console.log('【管理者系】');
-  console.log('  社長（S）    : president@daishin.test       / Test1234!');
-  console.log('  専務（A）    : director@daishin.test        / Test1234!');
-  console.log('  総務部長（A_special）: general-affairs@daishin.test / Test1234!');
-  console.log('  施工部長（B）: construction-manager@daishin.test / Test1234!');
+  console.log('  社長（S）          : president@daishin.test          / Test1234!');
+  console.log('  専務（A・executive）: director@daishin.test           / Test1234!');
+  console.log('  常務（A・managing） : managing-director@daishin.test  / Test1234!');
+  console.log('  総務部長（A_special）: general-affairs@daishin.test    / Test1234!');
+  console.log('  施工部長（B）       : construction-manager@daishin.test / Test1234!');
   console.log('');
   console.log('【現場系】');
   console.log('  現場監督（G）: supervisor@daishin.test      / Test1234!');

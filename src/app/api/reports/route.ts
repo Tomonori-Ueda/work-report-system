@@ -12,7 +12,7 @@ import {
   errorResponse,
 } from '@/lib/utils/api-response';
 import { createReportSchema } from '@/lib/validations/report';
-import { REPORT_STATUS } from '@/types/report';
+import { REPORT_STATUS, createEmptyApprovals } from '@/types/report';
 import { isAdminRole } from '@/types/user';
 
 /** POST /api/reports - 日報を作成 */
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       approvedBy: null,
       approvedByName: null,
       approvedAt: null,
+      approvals: createEmptyApprovals(),
       rejectReason: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
