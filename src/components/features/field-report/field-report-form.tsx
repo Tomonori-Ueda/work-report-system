@@ -459,11 +459,13 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
           </Button>
           <Button
             onClick={async () => {
-              // 検証 → 失敗ならエラートーストを出してプレビューに留まる
+              // 検証 → 失敗ならエラー詳細をトーストに出してプレビューに留まる
               const isValid = await form.trigger();
               if (!isValid) {
                 const errors = form.formState.errors;
-                const firstKey = Object.keys(errors)[0];
+                // ネストしたエラー構造から最初の message を再帰的に拾う
+                const firstMessage = findFirstErrorMessage(errors);
+                const firstKey = findFirstErrorPath(errors);
                 if (firstKey) {
                   setShowPreview(false);
                   setTimeout(() => {
@@ -472,7 +474,9 @@ export function FieldReportForm({ defaultReport, reportId }: FieldReportFormProp
                   }, 200);
                 }
                 toast.error(
-                  '未入力または不正な項目があります。フォームをご確認ください。'
+                  firstMessage
+                    ? `入力エラー: ${firstMessage}（${firstKey ?? ''}）`
+                    : '未入力または不正な項目があります。フォームをご確認ください。'
                 );
                 return;
               }
@@ -1747,6 +1751,48 @@ function MaterialDeliveryRow({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * react-hook-form の errors オブジェクト（ネスト含む）から
+ * 最初に見つかった検証エラーのメッセージを再帰的に取り出す。
+ */
+function findFirstErrorMessage(
+  errors: unknown
+): string | null {
+  if (errors == null || typeof errors !== 'object') return null;
+  // FieldError 自体の検出（{ type, message, ref? } 形式）
+  const obj = errors as Record<string, unknown>;
+  if (typeof obj.message === 'string' && obj.message.length > 0) {
+    return obj.message;
+  }
+  for (const key of Object.keys(obj)) {
+    const m = findFirstErrorMessage(obj[key]);
+    if (m) return m;
+  }
+  return null;
+}
+
+/**
+ * react-hook-form の errors オブジェクトから、最初のエラーの
+ * ドット区切りパス（例: "subcontractorWorks.0.companyName"）を返す。
+ */
+function findFirstErrorPath(
+  errors: unknown,
+  prefix = ''
+): string | null {
+  if (errors == null || typeof errors !== 'object') return null;
+  const obj = errors as Record<string, unknown>;
+  if (typeof obj.message === 'string' && obj.message.length > 0) {
+    return prefix || null;
+  }
+  for (const key of Object.keys(obj)) {
+    if (key === 'ref' || key === 'type' || key === 'types') continue;
+    const next = prefix ? `${prefix}.${key}` : key;
+    const p = findFirstErrorPath(obj[key], next);
+    if (p) return p;
+  }
+  return null;
 }
 
 /**
