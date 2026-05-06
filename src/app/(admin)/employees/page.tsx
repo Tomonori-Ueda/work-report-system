@@ -34,8 +34,8 @@ import { useAuthStore } from '@/stores/auth-store';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import type { ApiSuccessResponse } from '@/types/api';
-import type { User, UserRole } from '@/types/user';
-import { USER_ROLE } from '@/types/user';
+import type { User, UserRole, ExecutiveTitle } from '@/types/user';
+import { USER_ROLE, EXECUTIVE_TITLE } from '@/types/user';
 import { cn } from '@/lib/utils';
 
 /** ロール表示名マップ */
@@ -71,6 +71,8 @@ interface EditFormState {
   displayName: string;
   department: string;
   role: UserRole;
+  /** 4枠承認の役職タイトル（空文字は「未設定」を意味する） */
+  executiveTitle: ExecutiveTitle | '';
   hireDate: string;
   monthlySalary: string;
   annualLeaveBalance: string;
@@ -83,10 +85,25 @@ interface CreateFormState {
   password: string;
   displayName: string;
   role: UserRole;
+  /** 4枠承認の役職タイトル（空文字は「未設定」を意味する） */
+  executiveTitle: ExecutiveTitle | '';
   department: string;
   hireDate: string;
   monthlySalary: string;
   annualLeaveBalance: string;
+}
+
+/**
+ * ロールから役職タイトルの初期値を推定する。
+ * - A は executive を仮置き（ユーザーが「常務」を選びたい場合に変更）
+ * - S/B は固定
+ * - その他は '' （4枠承認に参加しない）
+ */
+function defaultExecutiveTitle(role: UserRole): ExecutiveTitle | '' {
+  if (role === USER_ROLE.S) return EXECUTIVE_TITLE.PRESIDENT;
+  if (role === USER_ROLE.B) return EXECUTIVE_TITLE.CONSTRUCTION_MANAGER;
+  if (role === USER_ROLE.A) return EXECUTIVE_TITLE.EXECUTIVE;
+  return '';
 }
 
 const DEFAULT_CREATE_FORM: CreateFormState = {
@@ -94,6 +111,7 @@ const DEFAULT_CREATE_FORM: CreateFormState = {
   password: '',
   displayName: '',
   role: USER_ROLE.GENERAL,
+  executiveTitle: '',
   department: '',
   hireDate: '',
   monthlySalary: '',
@@ -134,6 +152,7 @@ export default function EmployeesPage() {
       displayName: string;
       department: string | null;
       role: UserRole;
+      executiveTitle: ExecutiveTitle | null;
       hireDate: string | null;
       monthlySalary: number | null;
       annualLeaveBalance: number;
@@ -150,6 +169,7 @@ export default function EmployeesPage() {
           displayName: payload.displayName,
           department: payload.department,
           role: payload.role,
+          executiveTitle: payload.executiveTitle,
           hireDate: payload.hireDate,
           monthlySalary: payload.monthlySalary,
           annualLeaveBalance: payload.annualLeaveBalance,
@@ -180,6 +200,7 @@ export default function EmployeesPage() {
       password: string;
       displayName: string;
       role: UserRole;
+      executiveTitle: ExecutiveTitle | null;
       department: string | null;
       hireDate: string | null;
       monthlySalary: number | null;
@@ -244,6 +265,7 @@ export default function EmployeesPage() {
       password: createForm.password,
       displayName: createForm.displayName.trim(),
       role: createForm.role,
+      executiveTitle: createForm.executiveTitle === '' ? null : createForm.executiveTitle,
       department: createForm.department.trim() || null,
       hireDate: createForm.hireDate || null,
       monthlySalary,
@@ -256,6 +278,7 @@ export default function EmployeesPage() {
       displayName: user.displayName,
       department: user.department ?? '',
       role: user.role,
+      executiveTitle: user.executiveTitle ?? '',
       hireDate: user.hireDate ?? '',
       monthlySalary: user.monthlySalary !== null ? String(user.monthlySalary) : '',
       annualLeaveBalance: String(user.annualLeaveBalance),
@@ -295,6 +318,7 @@ export default function EmployeesPage() {
       displayName: form.displayName.trim(),
       department: form.department.trim() || null,
       role: form.role,
+      executiveTitle: form.executiveTitle === '' ? null : form.executiveTitle,
       hireDate: form.hireDate || null,
       monthlySalary,
       annualLeaveBalance,
@@ -457,9 +481,15 @@ export default function EmployeesPage() {
               </Label>
               <Select
                 value={createForm.role}
-                onValueChange={(val) =>
-                  setCreateForm((prev) => ({ ...prev, role: val as UserRole }))
-                }
+                onValueChange={(val) => {
+                  const newRole = val as UserRole;
+                  setCreateForm((prev) => ({
+                    ...prev,
+                    role: newRole,
+                    // ロール変更時に役職タイトルも自動推定
+                    executiveTitle: defaultExecutiveTitle(newRole),
+                  }));
+                }}
               >
                 <SelectTrigger id="createRole">
                   <SelectValue />
@@ -475,6 +505,30 @@ export default function EmployeesPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* A ロールの時のみ「専務 / 常務」セレクトを表示 */}
+            {createForm.role === USER_ROLE.A && (
+              <div className="space-y-2">
+                <Label htmlFor="createExecTitle">役職（4枠承認 slot）</Label>
+                <Select
+                  value={createForm.executiveTitle || EXECUTIVE_TITLE.EXECUTIVE}
+                  onValueChange={(val) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      executiveTitle: val as ExecutiveTitle,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="createExecTitle">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EXECUTIVE_TITLE.EXECUTIVE}>専務</SelectItem>
+                    <SelectItem value={EXECUTIVE_TITLE.MANAGING}>常務</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="createDepartment">部署</Label>
@@ -603,11 +657,19 @@ export default function EmployeesPage() {
                 </Label>
                 <Select
                   value={form.role}
-                  onValueChange={(val) =>
+                  onValueChange={(val) => {
+                    const newRole = val as UserRole;
                     setForm((prev) =>
-                      prev ? { ...prev, role: val as UserRole } : null
-                    )
-                  }
+                      prev
+                        ? {
+                            ...prev,
+                            role: newRole,
+                            // ロール変更時に役職タイトルも自動推定
+                            executiveTitle: defaultExecutiveTitle(newRole),
+                          }
+                        : null
+                    );
+                  }}
                 >
                   <SelectTrigger id="editRole">
                     <SelectValue />
@@ -623,6 +685,34 @@ export default function EmployeesPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* A ロールの時のみ「専務 / 常務」セレクトを表示 */}
+              {form.role === USER_ROLE.A && (
+                <div className="space-y-2">
+                  <Label htmlFor="editExecTitle">役職（4枠承認 slot）</Label>
+                  <Select
+                    value={form.executiveTitle || EXECUTIVE_TITLE.EXECUTIVE}
+                    onValueChange={(val) =>
+                      setForm((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              executiveTitle: val as ExecutiveTitle,
+                            }
+                          : null
+                      )
+                    }
+                  >
+                    <SelectTrigger id="editExecTitle">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={EXECUTIVE_TITLE.EXECUTIVE}>専務</SelectItem>
+                      <SelectItem value={EXECUTIVE_TITLE.MANAGING}>常務</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="editHireDate">入社日</Label>

@@ -1,3 +1,4 @@
+
 /**
  * @jest-environment node
  */
@@ -162,13 +163,6 @@ describe('generateFieldReportExcel', () => {
       },
     });
     const buf = await generateFieldReportExcel(r, '小林 紀之');
-
-    // ローカル目視用に書き出す（CI 等で書けない場合は無視）
-    try {
-      writeFileSync('/tmp/preview-field-report.xlsx', buf);
-    } catch {
-      // ignore: Read-only環境では何もしない
-    }
 
     // 出力したバッファを読み戻してセル値を検証
     const wb = new ExcelJS.Workbook();

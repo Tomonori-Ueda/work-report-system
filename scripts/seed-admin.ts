@@ -172,11 +172,10 @@ async function main(): Promise<void> {
   console.log('ログイン情報:');
   console.log('');
   console.log('【管理者系】');
-  console.log('  社長（S）          : president@daishin.test          / Test1234!');
-  console.log('  専務（A・executive）: director@daishin.test           / Test1234!');
-  console.log('  常務（A・managing） : jomu@daishin.test               / Test1234!');
-  console.log('  総務部長（A_special）: general-affairs@daishin.test    / Test1234!');
-  console.log('  施工部長（B）       : construction-manager@daishin.test / Test1234!');
+  console.log('  社長（S）    : president@daishin.test       / Test1234!');
+  console.log('  専務（A）    : director@daishin.test        / Test1234!');
+  console.log('  総務部長（A_special）: general-affairs@daishin.test / Test1234!');
+  console.log('  施工部長（B）: construction-manager@daishin.test / Test1234!');
   console.log('');
   console.log('【現場系】');
   console.log('  現場監督（G）: supervisor@daishin.test      / Test1234!');

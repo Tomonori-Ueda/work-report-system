@@ -13,7 +13,7 @@ import {
   errorResponse,
   serverErrorResponse,
 } from '@/lib/utils/api-response';
-import { isAdminRole, USER_ROLE } from '@/types/user';
+import { isAdminRole, USER_ROLE, EXECUTIVE_TITLE, getApprovalSlot } from '@/types/user';
 import type { UserRole } from '@/types/user';
 
 interface RouteParams {
@@ -68,6 +68,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       displayName?: string;
       department?: string | null;
       role?: string;
+      /** 4枠承認の役職タイトル（明示指定）。null で4枠から外す（A_special 等） */
+      executiveTitle?: string | null;
       hireDate?: string | null;
       monthlySalary?: number | null;
       annualLeaveBalance?: number;
@@ -104,6 +106,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // カスタムクレームのロールも更新
       const adminAuth = getAdminAuth();
       await adminAuth.setCustomUserClaims(id, { role: body.role });
+
+      // ロール変更で executiveTitle 明示指定がない場合、ロールから推定して上書き
+      if (body.executiveTitle === undefined) {
+        const inferred = getApprovalSlot(body.role as UserRole, undefined);
+        updateData['executiveTitle'] = inferred;
+      }
+    }
+
+    if (body.executiveTitle !== undefined) {
+      const allowed: Array<string | null> = [
+        EXECUTIVE_TITLE.PRESIDENT,
+        EXECUTIVE_TITLE.EXECUTIVE,
+        EXECUTIVE_TITLE.MANAGING,
+        EXECUTIVE_TITLE.CONSTRUCTION_MANAGER,
+        null,
+      ];
+      if (!allowed.includes(body.executiveTitle)) {
+        return errorResponse('BAD_REQUEST', '無効な役職タイトルです', 400);
+      }
+      updateData['executiveTitle'] = body.executiveTitle;
     }
 
     if (body.hireDate !== undefined) {

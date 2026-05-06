@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/features/report/status-badge';
+import { ApprovalsBadges } from '@/components/features/report/approvals-badges';
 import { WorkHoursDisplay } from '@/components/features/report/work-hours-display';
 import { WorkEntriesDisplay } from '@/components/features/report/work-entries-display';
 import { ApprovedByDisplay } from '@/components/features/report/approved-by-display';
@@ -254,6 +255,19 @@ export default function AdminReportDetailPage({
               <p className="whitespace-pre-wrap mt-1">{report.notes}</p>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* 4枠承認の押印状況バッジ */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">4枠承認 押印状況</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ApprovalsBadges approvals={report.approvals} size="md" />
+          <p className="mt-2 text-xs text-muted-foreground">
+            順序: 施工部長 → 常務 → 専務 → 社長
+          </p>
         </CardContent>
       </Card>
 

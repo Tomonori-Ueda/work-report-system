@@ -12,8 +12,8 @@ import {
   errorResponse,
   serverErrorResponse,
 } from '@/lib/utils/api-response';
-import { isAdminRole, USER_ROLE } from '@/types/user';
-import type { UserRole } from '@/types/user';
+import { isAdminRole, USER_ROLE, EXECUTIVE_TITLE, getApprovalSlot } from '@/types/user';
+import type { UserRole, ExecutiveTitle } from '@/types/user';
 
 /** ユーザー作成ボディのバリデーションスキーマ */
 const createUserSchema = z.object({
@@ -31,6 +31,19 @@ const createUserSchema = z.object({
     USER_ROLE.G,
     USER_ROLE.GENERAL,
   ]),
+  /**
+   * 4枠承認の役職タイトル。省略時は role から自動推定する
+   * （A→executive, S→president, B→construction_manager）
+   */
+  executiveTitle: z
+    .enum([
+      EXECUTIVE_TITLE.PRESIDENT,
+      EXECUTIVE_TITLE.EXECUTIVE,
+      EXECUTIVE_TITLE.MANAGING,
+      EXECUTIVE_TITLE.CONSTRUCTION_MANAGER,
+    ])
+    .optional()
+    .nullable(),
   department: z.string().max(50).optional().nullable(),
   hireDate: z
     .string()
@@ -88,11 +101,21 @@ export async function POST(request: NextRequest) {
       password,
       displayName,
       role,
+      executiveTitle,
       department,
       hireDate,
       monthlySalary,
       annualLeaveBalance,
     } = result.data;
+
+    /**
+     * 4枠承認の役職タイトルを決定する。
+     * - 明示指定があればそれを使う（A の中で executive/managing を区別する用途）
+     * - 未指定の場合は role から推定（president/executive/managing/construction_manager）
+     * - 推定対象外のロール（A_special/G/general）は null
+     */
+    const finalExecutiveTitle: ExecutiveTitle | null =
+      executiveTitle ?? getApprovalSlot(role as UserRole, undefined);
 
     const adminAuth = getAdminAuth();
     const db = getAdminDb();
@@ -122,6 +145,7 @@ export async function POST(request: NextRequest) {
       email,
       displayName,
       role,
+      executiveTitle: finalExecutiveTitle,
       department: department ?? null,
       hireDate: hireDate ?? null,
       monthlySalary: monthlySalary ?? null,
