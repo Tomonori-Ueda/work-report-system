@@ -4,7 +4,9 @@ import { useRequireAuth } from '@/hooks/use-auth';
 import { isSupervisor } from '@/types/user';
 import { FieldReportForm } from '@/components/features/field-report/field-report-form';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { AlertCircle, Wand2 } from 'lucide-react';
+import Link from 'next/link';
 
 /** 現場日報入力画面（Gロール専用） */
 export default function NewFieldReportPage() {
@@ -34,7 +36,15 @@ export default function NewFieldReportPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">現場日報入力</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">現場日報入力</h1>
+        <Button asChild variant="outline" size="sm" className="min-h-[40px]">
+          <Link href="/field-report/wizard">
+            <Wand2 className="h-4 w-4 mr-1" />
+            ウィザードで作成
+          </Link>
+        </Button>
+      </div>
       <FieldReportForm />
     </div>
   );
