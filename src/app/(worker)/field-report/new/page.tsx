@@ -40,7 +40,13 @@ export default function NewFieldReportPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div
+      className={
+        mode === 'table'
+          ? 'relative left-1/2 w-[calc(100vw-2rem)] max-w-[1180px] -translate-x-1/2 space-y-4'
+          : 'space-y-4'
+      }
+    >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl font-bold">現場日報入力</h1>
         <div className="flex items-center gap-2">
