@@ -28,6 +28,8 @@ export const queryKeys = {
     list: (filters?: object) =>
       ['fieldReports', 'list', filters] as const,
     detail: (id: string) => ['fieldReports', 'detail', id] as const,
+    cumulative: (siteId: string) =>
+      ['fieldReports', 'cumulative', siteId] as const,
   },
   /** 照合チェック */
   mismatch: {

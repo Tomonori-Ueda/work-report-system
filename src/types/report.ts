@@ -68,15 +68,28 @@ export interface ReportApprovals {
 }
 
 /**
- * 4枠承認の固定順序。先頭から順に押印していく必要がある。
- * 施工部長 → 常務 → 専務 → 社長
+ * 4枠承認の表示順序。
+ * 施工部長 → 社長 → 専務 → 常務
+ *
+ * Why: 実行順序は「施工部長が最初、残り3枠は順不同」だが、
+ * UI表示やイテレーション用に固定順序を定義する。
  */
 export const APPROVAL_ORDER = [
   EXECUTIVE_TITLE.CONSTRUCTION_MANAGER,
-  EXECUTIVE_TITLE.MANAGING,
-  EXECUTIVE_TITLE.EXECUTIVE,
   EXECUTIVE_TITLE.PRESIDENT,
+  EXECUTIVE_TITLE.EXECUTIVE,
+  EXECUTIVE_TITLE.MANAGING,
 ] as const satisfies readonly ExecutiveTitle[];
+
+/**
+ * 施工部長より後の「並列承認」対象 slot 一覧。
+ * この3枠は施工部長押印後であれば順不同で押印可能。
+ */
+const PARALLEL_SLOTS: readonly ApprovalSlot[] = [
+  EXECUTIVE_TITLE.PRESIDENT,
+  EXECUTIVE_TITLE.EXECUTIVE,
+  EXECUTIVE_TITLE.MANAGING,
+] as const;
 
 export type ApprovalSlot = (typeof APPROVAL_ORDER)[number];
 
@@ -91,42 +104,43 @@ export function createEmptyApprovals(): ReportApprovals {
 }
 
 /**
- * 指定 slot が「次に押印してよい」状態かを判定する。
- * - 自分より前の slot がすべて押印済み
- * - 自分の slot は未押印
+ * 指定 slot が「押印してよい」状態かを判定する。
+ * - 施工部長: 自分の slot が未押印であればいつでも押印可能
+ * - 社長/専務/常務: 施工部長が押印済み かつ 自分の slot が未押印
  *
- * Why: 順序固定の承認フローで、上位職が先に押す/同時並行を防ぐ。
+ * Why: 施工部長が最初に押印し、残り3枠は順不同で並列承認可能とする運用。
  */
 export function canApproveSlot(
   approvals: ReportApprovals,
   slot: ApprovalSlot
 ): boolean {
-  const idx = APPROVAL_ORDER.indexOf(slot);
-  if (idx < 0) return false;
-  for (let i = 0; i < idx; i++) {
-    const prev = APPROVAL_ORDER[i];
-    if (!prev) continue;
-    if (!approvals[prev]) return false;
+  // 施工部長は常に最初に押印可能（自分が未押印であれば）
+  if (slot === EXECUTIVE_TITLE.CONSTRUCTION_MANAGER) {
+    return approvals.construction_manager === null;
   }
+  // 社長/専務/常務は施工部長が押印済みかつ自分が未押印なら OK
+  if (!approvals.construction_manager) return false;
   return approvals[slot] === null;
 }
 
 /**
  * 自分の slot を取消してよいかを判定する。
- * 自分より後の slot に押印が入っていたら取消不可（後段の意味が変わるため）。
+ * - 施工部長: 後段（社長/専務/常務）に1つでも押印があれば取消不可
+ * - 社長/専務/常務: 自分の slot が押印済みならいつでも取消可能（並列のため相互依存なし）
  */
 export function canCancelSlot(
   approvals: ReportApprovals,
   slot: ApprovalSlot
 ): boolean {
-  const idx = APPROVAL_ORDER.indexOf(slot);
-  if (idx < 0) return false;
+  // 未押印の slot は取消できない
   if (approvals[slot] === null) return false;
-  for (let i = idx + 1; i < APPROVAL_ORDER.length; i++) {
-    const next = APPROVAL_ORDER[i];
-    if (!next) continue;
-    if (approvals[next]) return false;
+
+  // 施工部長は後段に1つでも押印があれば取消不可
+  if (slot === EXECUTIVE_TITLE.CONSTRUCTION_MANAGER) {
+    return PARALLEL_SLOTS.every((s) => approvals[s] === null);
   }
+
+  // 社長/専務/常務は並列なので、自分が押印済みならいつでも取消可能
   return true;
 }
 

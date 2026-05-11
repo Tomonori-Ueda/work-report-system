@@ -237,6 +237,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (!doc.exists) return notFoundResponse('日報が見つかりません');
 
     const data = doc.data()!;
+    const currentStatus = data.status as ReportStatus;
     const { executiveTitle } = await resolveExecutiveTitle(auth.uid);
     const slot = getApprovalSlot(auth.role, executiveTitle);
     if (!slot) {
@@ -272,8 +273,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       update.checkedBy = null;
       update.checkedAt = null;
     }
-    // 社長取消で approved → manager_checked に戻す
-    if (slot === EXECUTIVE_TITLE.PRESIDENT) {
+    // 社長/専務/常務（並列枠）の取消で approved → manager_checked に戻す
+    if (
+      slot !== EXECUTIVE_TITLE.CONSTRUCTION_MANAGER &&
+      currentStatus === REPORT_STATUS.APPROVED
+    ) {
       update.status = REPORT_STATUS.MANAGER_CHECKED;
       update.approvedBy = null;
       update.approvedByName = null;

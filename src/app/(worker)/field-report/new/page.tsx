@@ -1,16 +1,21 @@
 'use client';
 
+import { useState } from 'react';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { isSupervisor } from '@/types/user';
 import { FieldReportForm } from '@/components/features/field-report/field-report-form';
+import { FieldReportTableForm } from '@/components/features/field-report/field-report-table-form';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Wand2 } from 'lucide-react';
+import { AlertCircle, Wand2, Table2, ListChecks } from 'lucide-react';
 import Link from 'next/link';
+
+type InputMode = 'form' | 'table';
 
 /** 現場日報入力画面（Gロール専用） */
 export default function NewFieldReportPage() {
   const { role, isLoading } = useRequireAuth();
+  const [mode, setMode] = useState<InputMode>('table');
 
   if (isLoading) {
     return (
@@ -36,16 +41,48 @@ export default function NewFieldReportPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl font-bold">現場日報入力</h1>
-        <Button asChild variant="outline" size="sm" className="min-h-[40px]">
-          <Link href="/field-report/wizard">
-            <Wand2 className="h-4 w-4 mr-1" />
-            ウィザードで作成
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 入力モード切替 */}
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => setMode('table')}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors ${
+                mode === 'table'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              一括入力
+            </button>
+            <button
+              onClick={() => setMode('form')}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors ${
+                mode === 'form'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              通常フォーム
+            </button>
+          </div>
+          <Button asChild variant="outline" size="sm" className="min-h-[40px]">
+            <Link href="/field-report/wizard">
+              <Wand2 className="h-4 w-4 mr-1" />
+              ウィザード
+            </Link>
+          </Button>
+        </div>
       </div>
-      <FieldReportForm />
+
+      {mode === 'table' ? (
+        <FieldReportTableForm />
+      ) : (
+        <FieldReportForm />
+      )}
     </div>
   );
 }

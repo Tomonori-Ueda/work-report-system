@@ -266,7 +266,7 @@ export default function AdminReportDetailPage({
         <CardContent>
           <ApprovalsBadges approvals={report.approvals} size="md" />
           <p className="mt-2 text-xs text-muted-foreground">
-            順序: 施工部長 → 常務 → 専務 → 社長
+            順序: 施工部長（最初） → 社長・専務・常務（順不同）
           </p>
         </CardContent>
       </Card>

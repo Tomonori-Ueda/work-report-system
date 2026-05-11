@@ -33,17 +33,17 @@ function approvalsWith(slots: ReadonlyArray<keyof ReportApprovals>): ReportAppro
 }
 
 describe('APPROVAL_ORDER', () => {
-  it('施工部長 → 常務 → 専務 → 社長 の順で固定', () => {
+  it('施工部長 → 社長 → 専務 → 常務 の表示順序', () => {
     expect([...APPROVAL_ORDER]).toEqual([
       EXECUTIVE_TITLE.CONSTRUCTION_MANAGER,
-      EXECUTIVE_TITLE.MANAGING,
-      EXECUTIVE_TITLE.EXECUTIVE,
       EXECUTIVE_TITLE.PRESIDENT,
+      EXECUTIVE_TITLE.EXECUTIVE,
+      EXECUTIVE_TITLE.MANAGING,
     ]);
   });
 });
 
-describe('canApproveSlot - 順序ガード', () => {
+describe('canApproveSlot - 並列承認ガード', () => {
   it('全 slot 未押印なら 施工部長 のみ押印可', () => {
     const a = createEmptyApprovals();
     expect(canApproveSlot(a, 'construction_manager')).toBe(true);
@@ -52,26 +52,29 @@ describe('canApproveSlot - 順序ガード', () => {
     expect(canApproveSlot(a, 'president')).toBe(false);
   });
 
-  it('施工部長押印済みなら 常務 のみ押印可', () => {
+  it('施工部長押印済みなら 社長/専務/常務 全て押印可（並列）', () => {
     const a = approvalsWith(['construction_manager']);
     expect(canApproveSlot(a, 'construction_manager')).toBe(false); // 既押印
     expect(canApproveSlot(a, 'managing')).toBe(true);
-    expect(canApproveSlot(a, 'executive')).toBe(false);
-    expect(canApproveSlot(a, 'president')).toBe(false);
-  });
-
-  it('常務押印済みなら 専務 のみ押印可', () => {
-    const a = approvalsWith(['construction_manager', 'managing']);
     expect(canApproveSlot(a, 'executive')).toBe(true);
-    expect(canApproveSlot(a, 'president')).toBe(false);
-  });
-
-  it('専務押印済みなら 社長 のみ押印可', () => {
-    const a = approvalsWith(['construction_manager', 'managing', 'executive']);
     expect(canApproveSlot(a, 'president')).toBe(true);
   });
 
-  it('社長押印済みなら全 slot 押印不可', () => {
+  it('施工部長+社長押印済みでも 専務/常務 は押印可', () => {
+    const a = approvalsWith(['construction_manager', 'president']);
+    expect(canApproveSlot(a, 'executive')).toBe(true);
+    expect(canApproveSlot(a, 'managing')).toBe(true);
+    expect(canApproveSlot(a, 'president')).toBe(false); // 既押印
+  });
+
+  it('施工部長+専務+常務押印済みなら 社長 のみ残り', () => {
+    const a = approvalsWith(['construction_manager', 'executive', 'managing']);
+    expect(canApproveSlot(a, 'president')).toBe(true);
+    expect(canApproveSlot(a, 'executive')).toBe(false);
+    expect(canApproveSlot(a, 'managing')).toBe(false);
+  });
+
+  it('全枠押印済みなら全 slot 押印不可', () => {
     const a = approvalsWith([
       'construction_manager',
       'managing',
@@ -82,34 +85,46 @@ describe('canApproveSlot - 順序ガード', () => {
       expect(canApproveSlot(a, slot)).toBe(false);
     });
   });
+
+  it('施工部長未押印なら社長は押印できない', () => {
+    const a = createEmptyApprovals();
+    expect(canApproveSlot(a, 'president')).toBe(false);
+  });
 });
 
-describe('canCancelSlot - 取消ガード', () => {
+describe('canCancelSlot - 並列取消ガード', () => {
   it('未押印 slot は取消できない', () => {
     expect(canCancelSlot(createEmptyApprovals(), 'construction_manager')).toBe(false);
   });
 
-  it('自分より後の slot に押印が無ければ取消可', () => {
+  it('施工部長は後段に押印がなければ取消可', () => {
+    const a = approvalsWith(['construction_manager']);
+    expect(canCancelSlot(a, 'construction_manager')).toBe(true);
+  });
+
+  it('施工部長は後段に1つでも押印があると取消不可', () => {
     const a = approvalsWith(['construction_manager', 'managing']);
+    expect(canCancelSlot(a, 'construction_manager')).toBe(false);
+  });
+
+  it('社長/専務/常務は並列なので自由に取消可', () => {
+    const a = approvalsWith(['construction_manager', 'managing', 'executive', 'president']);
+    // 並列枠はいつでも取消可能
     expect(canCancelSlot(a, 'managing')).toBe(true);
-  });
-
-  it('自分より後に押印があると取消不可', () => {
-    const a = approvalsWith(['construction_manager', 'managing', 'executive']);
-    expect(canCancelSlot(a, 'managing')).toBe(false); // 後ろに executive あり
-    expect(canCancelSlot(a, 'construction_manager')).toBe(false); // 後ろに managing/executive あり
-    expect(canCancelSlot(a, 'executive')).toBe(true); // 末尾
-  });
-
-  it('社長押印済みからの取消は社長のみ可', () => {
-    const a = approvalsWith([
-      'construction_manager',
-      'managing',
-      'executive',
-      'president',
-    ]);
+    expect(canCancelSlot(a, 'executive')).toBe(true);
     expect(canCancelSlot(a, 'president')).toBe(true);
-    expect(canCancelSlot(a, 'executive')).toBe(false);
+    // 施工部長は後段に押印があるので取消不可
+    expect(canCancelSlot(a, 'construction_manager')).toBe(false);
+  });
+
+  it('社長のみ押印済みでも取消可', () => {
+    const a = approvalsWith(['construction_manager', 'president']);
+    expect(canCancelSlot(a, 'president')).toBe(true);
+  });
+
+  it('専務のみ押印済みでも取消可', () => {
+    const a = approvalsWith(['construction_manager', 'executive']);
+    expect(canCancelSlot(a, 'executive')).toBe(true);
   });
 });
 

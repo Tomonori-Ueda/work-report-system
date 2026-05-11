@@ -171,25 +171,25 @@ export function FieldReportWizard({
       siteName: defaultReport?.siteName ?? '',
       subcontractorWorks:
         defaultReport?.subcontractorWorks &&
-        defaultReport.subcontractorWorks.length > 0
+          defaultReport.subcontractorWorks.length > 0
           ? defaultReport.subcontractorWorks.map((w) => ({
-              ...w,
-              startTime: w.startTime ?? null,
-              endTime: w.endTime ?? null,
-              workerNames: w.workerNames ?? [],
-            }))
+            ...w,
+            startTime: w.startTime ?? null,
+            endTime: w.endTime ?? null,
+            workerNames: w.workerNames ?? [],
+          }))
           : [
-              {
-                subcontractorId: null,
-                companyName: '',
-                workerCount: 0,
-                workContent: '',
-                expenseCategory: EXPENSE_CATEGORY.LABOR,
-                startTime: undefined,
-                endTime: undefined,
-                workerNames: [],
-              },
-            ],
+            {
+              subcontractorId: null,
+              companyName: '',
+              workerCount: 0,
+              workContent: '',
+              expenseCategory: EXPENSE_CATEGORY.LABOR,
+              startTime: undefined,
+              endTime: undefined,
+              workerNames: [],
+            },
+          ],
       materialDeliveries: defaultReport?.materialDeliveries ?? [],
       notes: defaultReport?.notes ?? '',
       projectName: defaultReport?.projectName ?? '',
@@ -254,12 +254,8 @@ export function FieldReportWizard({
       return;
     }
     const values = form.getValues();
-    // tradeWorkers は本日/累計どちらか片方のみ入力されるケースがあるため、
-    // 保存前に正規化して両方 0/未入力のエントリを除去 + 欠けた側を 0 で補完。
-    const normalizedTradeWorkers = pruneUndefinedTradeWorkers(values.tradeWorkers);
-    const cleaned = {
+    const cleaned: CreateFieldReportFormValues = {
       ...values,
-      tradeWorkers: normalizedTradeWorkers,
       ownEmployees: (values.ownEmployees ?? []).filter(
         (e) => (e.displayName ?? '').trim().length > 0
       ),
@@ -293,12 +289,16 @@ export function FieldReportWizard({
           (e.workContent ?? '').trim().length > 0
       ),
     };
+    const payload = {
+      ...cleaned,
+      tradeWorkers: pruneUndefinedTradeWorkers(cleaned.tradeWorkers),
+    };
     try {
       if (reportId) {
-        await updateFieldReport.mutateAsync({ id: reportId, data: cleaned });
+        await updateFieldReport.mutateAsync({ id: reportId, data: payload });
         toast.success('現場日報を更新しました');
       } else {
-        await createFieldReport.mutateAsync(cleaned);
+        await createFieldReport.mutateAsync(payload);
         toast.success('現場日報を保存しました');
       }
       router.push('/field-report/history');

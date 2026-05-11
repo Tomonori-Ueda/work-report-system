@@ -140,3 +140,32 @@ export function useDeleteFieldReport() {
     },
   });
 }
+
+/** 累計集計データの型 */
+export interface CumulativeData {
+  siteId: string;
+  tradeWorkers: Record<string, number>;
+  laborHoursCumulative: number;
+  reportCount: number;
+}
+
+/**
+ * 現場マスターごとの職種別累計を取得する。
+ * 一括入力フォームで「累計」列にリアルタイム表示するため使用。
+ */
+export function useFieldReportCumulative(siteId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fieldReports.cumulative(siteId ?? ''),
+    queryFn: async (): Promise<CumulativeData> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `/api/field-reports/cumulative?siteId=${encodeURIComponent(siteId ?? '')}`,
+        { headers }
+      );
+      if (!res.ok) throw new Error('累計データの取得に失敗しました');
+      const json = (await res.json()) as ApiSuccessResponse<CumulativeData>;
+      return json.data;
+    },
+    enabled: !!siteId,
+  });
+}
